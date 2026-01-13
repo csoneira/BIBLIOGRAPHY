@@ -1,0 +1,52 @@
+{
+  "my_keywords": [
+    {
+      "tag": "minitrasgo",
+      "terms": ["minitrasgo", "trasgo", "trasgo project"]
+    },
+    {
+      "tag": "scintillators",
+      "terms": ["scintillator", "sipm", "plastic scintillator", "labr3", "ce"]
+    },
+    {
+      "tag": "medical",
+      "terms": ["medical imaging", "pet", "gamma", "radiology", "radiotherapy"]
+    },
+    {
+      "tag": "forbush",
+      "terms": ["forbush"]
+    },
+    {
+      "tag": "rpc",
+      "terms": ["rpc", "resistive plate chamber"]
+    },
+    {
+      "tag": "muography",
+      "terms": ["muography", "muon imaging", "muon tomography"]
+    },
+    {
+      "tag": "icecube",
+      "terms": ["icecube", "icetop"]
+    },
+    {
+      "tag": "space-weather",
+      "terms": ["space weather", "geomagnetic", "solar wind", "magnetosphere"]
+    },
+    {
+      "tag": "cosmic-rays",
+      "terms": ["cosmic ray", "air shower", "forbush decrease"]
+    },
+    {
+      "tag": "detectors",
+      "terms": ["detector", "instrumentation", "readout", "daq"]
+    },
+    {
+      "tag": "neutrino",
+      "terms": ["neutrino", "sn@lhc", "snd@lhc"]
+    },
+    {
+      "tag": "atmospheric",
+      "terms": ["atmospheric", "pressure", "temperature effect"]
+    }
+  ]
+}

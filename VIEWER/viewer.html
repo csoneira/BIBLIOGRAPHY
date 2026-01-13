@@ -1,0 +1,199 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Bibliography Finder</title>
+    <style>
+      :root {
+        --bg: #f8f4ef;
+        --bg-accent: #d9d0c7;
+        --ink: #1f2428;
+        --muted: #5f6a6f;
+        --accent: #1e4f7a;
+        --card: #ffffffcc;
+        --shadow: 0 12px 30px rgba(31, 36, 40, 0.12);
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        font-family: "Palatino Linotype", "Book Antiqua", Palatino, serif;
+        color: var(--ink);
+        background: radial-gradient(circle at top, #fff6e8, var(--bg) 40%)
+          fixed;
+        min-height: 100vh;
+      }
+
+      header {
+        padding: 32px 10vw 20px;
+      }
+
+      h1 {
+        margin: 0 0 6px;
+        font-size: clamp(28px, 3vw, 40px);
+        letter-spacing: 0.02em;
+      }
+
+      p {
+        margin: 0;
+        color: var(--muted);
+        font-size: 16px;
+      }
+
+      .panel {
+        margin: 0 10vw 24px;
+        padding: 20px;
+        background: var(--card);
+        border-radius: 16px;
+        box-shadow: var(--shadow);
+        backdrop-filter: blur(8px);
+      }
+
+      .filters {
+        display: grid;
+        gap: 12px;
+        grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      }
+
+      label {
+        display: block;
+        font-size: 13px;
+        color: var(--muted);
+        margin-bottom: 6px;
+      }
+
+      input {
+        width: 100%;
+        padding: 10px 12px;
+        border-radius: 10px;
+        border: 1px solid #d6d6d6;
+        font-family: inherit;
+        font-size: 15px;
+        background: #fff;
+      }
+
+      .actions {
+        margin-top: 16px;
+        display: flex;
+        gap: 12px;
+        flex-wrap: wrap;
+      }
+
+      button {
+        border: none;
+        padding: 10px 18px;
+        border-radius: 999px;
+        font-family: inherit;
+        cursor: pointer;
+        font-size: 14px;
+      }
+
+      button.primary {
+        background: var(--accent);
+        color: #fff;
+      }
+
+      button.secondary {
+        background: #e2e6ea;
+        color: var(--ink);
+      }
+
+      .results {
+        margin: 0 10vw 40px;
+        display: grid;
+        gap: 16px;
+      }
+
+      .card {
+        padding: 16px 18px;
+        border-radius: 14px;
+        background: #fff;
+        box-shadow: var(--shadow);
+        animation: fadeIn 0.3s ease both;
+      }
+
+      .card h3 {
+        margin: 0 0 6px;
+        font-size: 18px;
+      }
+
+      .meta {
+        color: var(--muted);
+        font-size: 14px;
+      }
+
+      .code {
+        font-family: "Courier New", Courier, monospace;
+        color: var(--accent);
+        font-size: 13px;
+      }
+
+      @keyframes fadeIn {
+        from {
+          opacity: 0;
+          transform: translateY(8px);
+        }
+        to {
+          opacity: 1;
+          transform: translateY(0);
+        }
+      }
+
+      @media (max-width: 720px) {
+        header,
+        .panel,
+        .results {
+          margin: 0 6vw 24px;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <h1>Bibliography Finder</h1>
+      <p>Filter and scan your local metadata.csv without touching the PDFs.</p>
+    </header>
+
+    <section class="panel">
+      <div class="filters">
+        <div>
+          <label for="fromYear">From year</label>
+          <input id="fromYear" type="number" placeholder="2018" />
+        </div>
+        <div>
+          <label for="toYear">To year</label>
+          <input id="toYear" type="number" placeholder="2025" />
+        </div>
+        <div>
+          <label for="typeFilter">Type</label>
+          <input id="typeFilter" type="text" placeholder="article, book, thesis" />
+        </div>
+        <div>
+          <label for="journal">Journal contains</label>
+          <input id="journal" type="text" placeholder="Nature, NIM A" />
+        </div>
+        <div>
+          <label for="keyword">Keywords contain</label>
+          <input id="keyword" type="text" placeholder="muon, detector" />
+        </div>
+        <div>
+          <label for="myKeyword">My keywords contain</label>
+          <input id="myKeyword" type="text" placeholder="project-x" />
+        </div>
+      </div>
+      <div class="actions">
+        <button class="primary" id="applyBtn">Apply filters</button>
+        <button class="secondary" id="resetBtn">Reset</button>
+        <button class="secondary" id="saveBtn">Save list</button>
+      </div>
+    </section>
+
+    <section class="results" id="results"></section>
+
+    <script src="viewer.js"></script>
+  </body>
+</html>
