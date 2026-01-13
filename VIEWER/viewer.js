@@ -64,6 +64,7 @@ function applyFilters(rows, filters) {
   return rows.filter((row) => {
     const year = parseInt(row.year || "0", 10);
     const typeValue = (row.type || "").toLowerCase();
+    const starValue = (row.star || "").toString();
     if (filters.fromYear && year < filters.fromYear) {
       return false;
     }
@@ -71,6 +72,12 @@ function applyFilters(rows, filters) {
       return false;
     }
     if (filters.type && !typeValue.includes(filters.type)) {
+      return false;
+    }
+    if (filters.title && !row.title.toLowerCase().includes(filters.title)) {
+      return false;
+    }
+    if (filters.starOnly && starValue !== "1") {
       return false;
     }
     if (filters.journal && !row.journal.toLowerCase().includes(filters.journal)) {
@@ -102,9 +109,37 @@ function renderResults(rows) {
     const card = document.createElement("div");
     card.className = "card";
 
+    const header = document.createElement("div");
+    header.className = "card-header";
+
     const title = document.createElement("h3");
-    title.textContent = row.title || row.code || "Untitled";
-    card.appendChild(title);
+    const link = document.createElement("a");
+    link.textContent = row.title || row.code || "Untitled";
+    link.href = `../${row.file}`;
+    link.target = "_blank";
+    link.rel = "noopener";
+    title.appendChild(link);
+    header.appendChild(title);
+
+    const star = document.createElement("button");
+    star.className = "star";
+    star.textContent = row.star === "1" ? "★" : "☆";
+    star.title = "Toggle star";
+    star.addEventListener("click", async (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      const next = row.star === "1" ? "" : "1";
+      try {
+        await setStarOnServer(row.file, next);
+        row.star = next;
+        star.textContent = row.star === "1" ? "★" : "☆";
+      } catch (err) {
+        alert("Failed to save star. Start the viewer server with: python3 CODE/viewer_server.py");
+      }
+    });
+    header.appendChild(star);
+
+    card.appendChild(header);
 
     const meta = document.createElement("div");
     meta.className = "meta";
@@ -127,10 +162,24 @@ function getFilters() {
     fromYear: parseInt(document.getElementById("fromYear").value, 10) || null,
     toYear: parseInt(document.getElementById("toYear").value, 10) || null,
     type: document.getElementById("typeFilter").value.trim().toLowerCase(),
+    title: document.getElementById("titleFilter").value.trim().toLowerCase(),
+    starOnly: document.getElementById("starOnly").checked,
     journal: document.getElementById("journal").value.trim().toLowerCase(),
     keyword: document.getElementById("keyword").value.trim().toLowerCase(),
     myKeyword: document.getElementById("myKeyword").value.trim().toLowerCase(),
   };
+}
+
+async function setStarOnServer(file, star) {
+  const response = await fetch("/toggle-star", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ file, star }),
+  });
+  if (!response.ok) {
+    throw new Error("Failed to save star.");
+  }
+  return response.json();
 }
 
 async function saveListToServer(name, rows, filters) {
@@ -175,6 +224,8 @@ async function init() {
       document.getElementById("fromYear").value = "";
       document.getElementById("toYear").value = "";
       document.getElementById("typeFilter").value = "";
+      document.getElementById("titleFilter").value = "";
+      document.getElementById("starOnly").checked = false;
       document.getElementById("journal").value = "";
       document.getElementById("keyword").value = "";
       document.getElementById("myKeyword").value = "";

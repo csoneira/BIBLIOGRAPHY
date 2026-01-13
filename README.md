@@ -72,6 +72,7 @@ Serve the repo locally and open the viewer:
 python3 CODE/viewer_server.py
 ```
 
-Then visit `http://localhost:8000/VIEWER/viewer.html` and filter on year, journal, and keywords.
+Then visit `http://localhost:8000/VIEWER/viewer.html` and filter on year, journal, keywords, or starred items.
 
 Use the **Save list** button to write a JSON file into `SAVED_LISTS/`.
+Click the star next to a title to toggle `star` in `METADATA/metadata.csv`.

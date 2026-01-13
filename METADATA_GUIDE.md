@@ -14,6 +14,8 @@
 - `author`: author list.
 - `keywords`: keywords from the paper or your tags.
 - `my_keywords`: your project- or topic-specific tags.
+- `star`: set to `1` when starred in the viewer.
+- `added_at`: date added to the bibliography (YYYY-MM-DD).
 - `abstract`: full abstract text.
 - `notes`: any extra notes (optional).
 

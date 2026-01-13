@@ -28,6 +28,8 @@ FIELDS = [
     "author",
     "keywords",
     "my_keywords",
+    "star",
+    "added_at",
     "abstract",
     "notes",
 ]
@@ -278,6 +280,8 @@ def scan_pdfs(dry_run: bool = False) -> list:
             "author": prev.get("author", author),
             "keywords": prev.get("keywords", ""),
             "my_keywords": prev.get("my_keywords", auto_tags),
+            "star": prev.get("star", ""),
+            "added_at": prev.get("added_at", datetime.utcnow().strftime("%Y-%m-%d")),
             "abstract": prev.get("abstract", ""),
             "notes": prev.get("notes", ""),
         }
