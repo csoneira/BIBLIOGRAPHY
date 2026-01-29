@@ -6,7 +6,7 @@ import os
 import re
 import shutil
 import subprocess
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 
 top = Path(__file__).resolve().parent.parent
@@ -37,6 +37,13 @@ FIELDS = [
 DOI_RE = re.compile(r"\b10\.\d{4,9}/[^\s\"<>]+", re.IGNORECASE)
 ARXIV_RE = re.compile(r"(?<!\d)(\d{2})(\d{2})\.\d{4,5}(?:v\d+)?(?!\d)")
 ARXIV_TEXT_RE = re.compile(r"arxiv:\s*(\d{4})\.(\d{4,5})", re.IGNORECASE)
+BAD_TITLE_RE = re.compile(
+    r"^(?:untitled|pdf download|powerpoint presentation)$"
+    r"|^(?:doi:|pii:|arxiv:)"
+    r"|^(?:journal of|proceedings of)"
+    r"|\\.(?:pdf|dvi|tif|djvu|doc)$",
+    re.IGNORECASE,
+)
 
 
 def load_config() -> dict:
@@ -255,7 +262,7 @@ def scan_pdfs(dry_run: bool = False) -> list:
         if not dry_run and (path.resolve() != new_path.resolve()):
             if new_path.exists():
                 # Avoid collisions by appending a suffix.
-                ts = datetime.utcnow().strftime("%Y%m%d%H%M%S")
+                ts = datetime.now(timezone.utc).strftime("%Y%m%d%H%M%S")
                 new_path = LIB_DIR / f"{code}-{ts}.pdf"
                 code = new_path.stem
             path.rename(new_path)
@@ -281,7 +288,7 @@ def scan_pdfs(dry_run: bool = False) -> list:
             "keywords": prev.get("keywords", ""),
             "my_keywords": prev.get("my_keywords", auto_tags),
             "star": prev.get("star", ""),
-            "added_at": prev.get("added_at", datetime.utcnow().strftime("%Y-%m-%d")),
+            "added_at": prev.get("added_at", datetime.now(timezone.utc).strftime("%Y-%m-%d")),
             "abstract": prev.get("abstract", ""),
             "notes": prev.get("notes", ""),
         }
@@ -342,6 +349,59 @@ def load_rows() -> list:
         return list(csv.DictReader(handle))
 
 
+def find_bad_titles(rows: list) -> list:
+    bad = []
+    for row in rows:
+        title = (row.get("title") or "").strip()
+        if not title or BAD_TITLE_RE.search(title):
+            bad.append(row)
+    return bad
+
+
+def verify_integrity() -> int:
+    pdfs = sorted([str(p.relative_to(top)) for p in LIB_DIR.glob("*.pdf")])
+    rows = load_rows()
+    meta_files = [row.get("file", "") for row in rows if row.get("file")]
+    missing_in_meta = [p for p in pdfs if p not in meta_files]
+    missing_pdfs = [f for f in meta_files if f.endswith(".pdf") and not (top / f).exists()]
+
+    code_counts = {}
+    for row in rows:
+        code = (row.get("code") or "").strip()
+        if not code:
+            continue
+        code_counts[code] = code_counts.get(code, 0) + 1
+    duplicate_codes = sorted([code for code, count in code_counts.items() if count > 1])
+
+    bad_titles = find_bad_titles(rows)
+
+    issues = 0
+    if missing_in_meta:
+        issues += 1
+        print(f"Missing in metadata: {len(missing_in_meta)}")
+        for item in missing_in_meta[:20]:
+            print(f"  - {item}")
+    if missing_pdfs:
+        issues += 1
+        print(f"Missing PDF files: {len(missing_pdfs)}")
+        for item in missing_pdfs[:20]:
+            print(f"  - {item}")
+    if bad_titles:
+        issues += 1
+        print(f"Bad titles: {len(bad_titles)}")
+        for row in bad_titles[:20]:
+            print(f"  - {row.get('title', '')} :: {row.get('file', '')}")
+    if duplicate_codes:
+        issues += 1
+        print(f"Duplicate codes: {len(duplicate_codes)}")
+        for code in duplicate_codes[:20]:
+            print(f"  - {code}")
+
+    if issues == 0:
+        print("Integrity check: OK")
+    return issues
+
+
 def print_codes(rows: list) -> None:
     for row in rows:
         print(row.get("code", ""))
@@ -372,6 +432,8 @@ def main():
     list_c = sub.add_parser("list-collections", help="List saved collections")
     tag = sub.add_parser("tag", help="Auto-tag my_keywords using config.json")
     tag.add_argument("--force", action="store_true", help="Overwrite existing my_keywords")
+
+    verify = sub.add_parser("verify", help="Check metadata integrity")
 
     args = parser.parse_args()
 
@@ -443,6 +505,12 @@ def main():
                 updated += 1
         save_metadata(rows)
         print(f"Updated my_keywords for {updated} entries")
+        return
+
+    if args.command == "verify":
+        issues = verify_integrity()
+        if issues:
+            raise SystemExit(1)
         return
 
 

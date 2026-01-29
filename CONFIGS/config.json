@@ -6,11 +6,27 @@
     },
     {
       "tag": "scintillators",
-      "terms": ["scintillator", "sipm", "plastic scintillator", "labr3", "ce"]
+      "terms": [
+        "scintillator",
+        "scintillation",
+        "sipm",
+        "silicon photomultiplier",
+        "plastic scintillator",
+        "labr3",
+        "lyso",
+        "lso"
+      ]
     },
     {
       "tag": "medical",
-      "terms": ["medical imaging", "pet", "gamma", "radiology", "radiotherapy"]
+      "terms": [
+        "medical imaging",
+        "positron emission tomography",
+        "pet scan",
+        "pet imaging",
+        "radiology",
+        "radiotherapy"
+      ]
     },
     {
       "tag": "forbush",
@@ -38,7 +54,14 @@
     },
     {
       "tag": "detectors",
-      "terms": ["detector", "instrumentation", "readout", "daq"]
+      "terms": [
+        "instrumentation",
+        "readout",
+        "data acquisition",
+        "daq",
+        "trigger",
+        "frontend electronics"
+      ]
     },
     {
       "tag": "neutrino",
@@ -46,7 +69,7 @@
     },
     {
       "tag": "atmospheric",
-      "terms": ["atmospheric", "pressure", "temperature effect"]
+      "terms": ["atmospheric", "atmospheric pressure", "temperature effect"]
     }
   ]
 }
