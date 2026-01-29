@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=Bibliography Finder
+Comment=Open the local bibliography viewer
+Exec=/home/csoneira/BIBLIOGRAPHY/LAUNCHER/launch_viewer.sh
+Icon=/home/csoneira/BIBLIOGRAPHY/LAUNCHER/icon.jpg
+Terminal=false
+Categories=Office;Education;

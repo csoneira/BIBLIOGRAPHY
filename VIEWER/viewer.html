@@ -76,6 +76,16 @@
         background: #fff;
       }
 
+      select {
+        width: 100%;
+        padding: 10px 12px;
+        border-radius: 10px;
+        border: 1px solid #d6d6d6;
+        font-family: inherit;
+        font-size: 15px;
+        background: #fff;
+      }
+
       .actions {
         margin-top: 16px;
         display: flex;
@@ -209,10 +219,17 @@
           <label for="myKeyword">My keywords contain</label>
           <input id="myKeyword" type="text" placeholder="project-x" />
         </div>
+        <div>
+          <label for="savedList">Saved list</label>
+          <select id="savedList">
+            <option value="">Select saved list</option>
+          </select>
+        </div>
       </div>
       <div class="actions">
         <button class="primary" id="applyBtn">Apply filters</button>
         <button class="secondary" id="resetBtn">Reset</button>
+        <button class="secondary" id="loadListBtn">Load list</button>
         <button class="secondary" id="saveBtn">Save list</button>
       </div>
     </section>

@@ -76,3 +76,11 @@ Then visit `http://localhost:8000/VIEWER/viewer.html` and filter on year, journa
 
 Use the **Save list** button to write a JSON file into `SAVED_LISTS/`.
 Click the star next to a title to toggle `star` in `METADATA/metadata.csv`.
+
+## Desktop launcher
+
+The repo ships a launcher in `BIBLIOGRAPHY.desktop`. To register it:
+
+```
+cp /home/csoneira/BIBLIOGRAPHY/BIBLIOGRAPHY.desktop ~/.local/share/applications/
+```

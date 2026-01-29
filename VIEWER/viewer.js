@@ -93,6 +93,14 @@ function applyFilters(rows, filters) {
   });
 }
 
+function applySavedList(rows, savedList) {
+  const codes = new Set((savedList.codes || []).filter(Boolean));
+  if (!codes.size) {
+    return [];
+  }
+  return rows.filter((row) => codes.has(row.code));
+}
+
 function renderResults(rows) {
   const container = document.getElementById("results");
   container.innerHTML = "";
@@ -208,9 +216,39 @@ async function loadData() {
   return toRows(text);
 }
 
+async function loadSavedLists() {
+  const select = document.getElementById("savedList");
+  select.innerHTML = "";
+  const defaultOption = document.createElement("option");
+  defaultOption.value = "";
+  defaultOption.textContent = "Select saved list";
+  select.appendChild(defaultOption);
+
+  try {
+    const response = await fetch("/saved-lists");
+    if (!response.ok) {
+      throw new Error("Saved lists not available.");
+    }
+    const lists = await response.json();
+    lists.sort((a, b) => (a.name || "").localeCompare(b.name || ""));
+    lists.forEach((list) => {
+      const option = document.createElement("option");
+      option.value = list.filename;
+      option.textContent = list.name || list.filename;
+      select.appendChild(option);
+    });
+    return lists;
+  } catch (err) {
+    defaultOption.textContent = "Saved lists unavailable (use viewer_server.py)";
+    select.disabled = true;
+    return [];
+  }
+}
+
 async function init() {
   try {
     const rows = await loadData();
+    const savedLists = await loadSavedLists();
     let filteredRows = rows;
     renderResults(rows);
 
@@ -229,8 +267,24 @@ async function init() {
       document.getElementById("journal").value = "";
       document.getElementById("keyword").value = "";
       document.getElementById("myKeyword").value = "";
+      document.getElementById("savedList").value = "";
       filteredRows = rows;
       renderResults(rows);
+    });
+
+    document.getElementById("loadListBtn").addEventListener("click", () => {
+      const selection = document.getElementById("savedList").value;
+      if (!selection) {
+        alert("Pick a saved list first.");
+        return;
+      }
+      const selectedList = savedLists.find((list) => list.filename === selection);
+      if (!selectedList) {
+        alert("Saved list not found. Refresh the page.");
+        return;
+      }
+      filteredRows = applySavedList(rows, selectedList);
+      renderResults(filteredRows);
     });
 
     document.getElementById("saveBtn").addEventListener("click", async () => {

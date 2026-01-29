@@ -15,6 +15,12 @@ class Handler(SimpleHTTPRequestHandler):
         rel = path.lstrip("/")
         return str(ROOT / rel)
 
+    def do_GET(self):
+        if self.path == "/saved-lists":
+            self._handle_saved_lists()
+            return
+        super().do_GET()
+
     def do_POST(self):
         if self.path != "/save-list":
             if self.path == "/toggle-star":
@@ -57,6 +63,28 @@ class Handler(SimpleHTTPRequestHandler):
         self.send_header("Content-Type", "application/json")
         self.end_headers()
         self.wfile.write(json.dumps({"path": str(path)}).encode("utf-8"))
+
+    def _handle_saved_lists(self):
+        SAVED_LISTS_DIR.mkdir(parents=True, exist_ok=True)
+        items = []
+        for path in sorted(SAVED_LISTS_DIR.glob("*.json")):
+            try:
+                data = json.loads(path.read_text(encoding="utf-8"))
+            except json.JSONDecodeError:
+                continue
+            items.append(
+                {
+                    "filename": path.name,
+                    "name": data.get("name", path.stem),
+                    "codes": data.get("codes", []),
+                    "filters": data.get("filters", {}),
+                }
+            )
+
+        self.send_response(200)
+        self.send_header("Content-Type", "application/json")
+        self.end_headers()
+        self.wfile.write(json.dumps(items).encode("utf-8"))
 
     def _handle_toggle_star(self):
         content_length = int(self.headers.get("Content-Length", "0"))
