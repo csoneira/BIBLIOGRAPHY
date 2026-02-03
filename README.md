@@ -136,5 +136,8 @@ Click the star next to a title to toggle `star` in `METADATA/metadata.csv`.
 The repo ships a launcher in `BIBLIOGRAPHY.desktop`. To register it:
 
 ```
-cp /home/csoneira/BIBLIOGRAPHY/BIBLIOGRAPHY.desktop ~/.local/share/applications/
+cp /home/csoneira/WORK/BIBLIOGRAPHY/BIBLIOGRAPHY.desktop ~/.local/share/applications/
+chmod +x /home/csoneira/WORK/BIBLIOGRAPHY/LAUNCHER/launch_viewer.sh
 ```
+
+If you move the repo again, update `BIBLIOGRAPHY.desktop` to the new absolute paths and re-copy it.
