@@ -6,6 +6,7 @@ import os
 import re
 import shutil
 import subprocess
+import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -35,6 +36,8 @@ FIELDS = [
 ]
 
 DOI_RE = re.compile(r"\b10\.\d{4,9}/[^\s\"<>]+", re.IGNORECASE)
+DOI_FULL_RE = re.compile(r"^10\.\d{4,9}/\S+$", re.IGNORECASE)
+YEAR_RE = re.compile(r"^\d{4}$")
 ARXIV_RE = re.compile(r"(?<!\d)(\d{2})(\d{2})\.\d{4,5}(?:v\d+)?(?!\d)")
 ARXIV_TEXT_RE = re.compile(r"arxiv:\s*(\d{4})\.(\d{4,5})", re.IGNORECASE)
 BAD_TITLE_RE = re.compile(
@@ -44,6 +47,8 @@ BAD_TITLE_RE = re.compile(
     r"|\\.(?:pdf|dvi|tif|djvu|doc)$",
     re.IGNORECASE,
 )
+
+REQUIRED_FIELDS = ["code", "file", "type", "title", "year"]
 
 
 def load_config() -> dict:
@@ -79,6 +84,13 @@ def suggest_my_keywords(text: str, config: dict) -> str:
         if any(term.lower() in text_lower for term in entry["terms"]):
             matches.append(entry["tag"])
     return ", ".join(sorted(set(matches)))
+
+
+def split_tags(value: str) -> list:
+    if not value:
+        return []
+    parts = re.split(r"[;,]", value)
+    return [part.strip() for part in parts if part.strip()]
 
 
 def run_pdfinfo(path: Path) -> dict:
@@ -402,6 +414,383 @@ def verify_integrity() -> int:
     return issues
 
 
+def normalize_title_text(title: str) -> str:
+    if not title:
+        return title
+    replacements = {
+        "\ufb01": "fi",
+        "\ufb02": "fl",
+        "\ufb03": "ffi",
+        "\ufb04": "ffl",
+        "\u2010": "-",
+        "\u2011": "-",
+        "\u2013": "-",
+        "\u2014": "-",
+        "\u2018": "'",
+        "\u2019": "'",
+        "\u201c": "\"",
+        "\u201d": "\"",
+        "\u00a0": " ",
+    }
+    for src, dst in replacements.items():
+        title = title.replace(src, dst)
+    title = re.sub(r"([A-Za-z])-\s+([A-Za-z])", r"\1-\2", title)
+    title = re.sub(r"Tele-\s*scope", "Telescope", title, flags=re.IGNORECASE)
+    title = title.replace("?HE ", "THE ")
+    title = re.sub(r"\s+", " ", title).strip()
+    return title.strip(" -")
+
+
+def cleanup_titles(rename_files: bool = False, dry_run: bool = False) -> int:
+    rows = load_rows()
+    updated = 0
+    renames = []
+    for row in rows:
+        title = row.get("title", "")
+        normalized = normalize_title_text(title)
+        if not normalized or normalized == title:
+            continue
+        row["title"] = normalized
+        updated += 1
+
+        if not rename_files:
+            continue
+        year = row.get("year", "0000")
+        doc_type = row.get("type", "article")
+        slug = slugify(normalized)
+        code = f"{year}_{doc_type}_{slug}"
+        new_name = f"{code}.pdf"
+        old_path = top / row.get("file", "")
+        new_path = LIB_DIR / new_name
+        if old_path.exists() and old_path.resolve() != new_path.resolve():
+            if new_path.exists():
+                ts = datetime.now(timezone.utc).strftime("%Y%m%d%H%M%S")
+                new_path = LIB_DIR / f"{code}-{ts}.pdf"
+                code = new_path.stem
+            if not dry_run:
+                old_path.rename(new_path)
+            row["file"] = str(new_path.relative_to(top))
+            row["code"] = code
+            renames.append((str(old_path.relative_to(top)), row["file"]))
+
+    if updated and not dry_run:
+        save_metadata(rows)
+
+    if updated:
+        print(f"Normalized titles: {updated}")
+    if renames:
+        print(f"Renamed files: {len(renames)}")
+        for old, new in renames[:20]:
+            print(f"  - {old} -> {new}")
+    return updated
+
+
+def dedupe_metadata() -> int:
+    rows = load_rows()
+    doi_map = {}
+    title_map = {}
+    for row in rows:
+        doi = (row.get("doi") or "").strip().lower()
+        if doi:
+            doi_map.setdefault(doi, []).append(row)
+        title = normalize_title_text(row.get("title", "")).lower()
+        if title:
+            title_map.setdefault(title, []).append(row)
+
+    duplicates = 0
+    dup_doi = {k: v for k, v in doi_map.items() if len(v) > 1}
+    dup_title = {k: v for k, v in title_map.items() if len(v) > 1}
+
+    if dup_doi:
+        duplicates += len(dup_doi)
+        print(f"Duplicate DOIs: {len(dup_doi)}")
+        for doi, items in list(dup_doi.items())[:20]:
+            print(f"  - {doi}")
+            for row in items[:5]:
+                print(f"      {row.get('code', '')} :: {row.get('file', '')}")
+
+    if dup_title:
+        duplicates += len(dup_title)
+        print(f"Duplicate titles: {len(dup_title)}")
+        for title, items in list(dup_title.items())[:20]:
+            print(f"  - {title}")
+            for row in items[:5]:
+                print(f"      {row.get('code', '')} :: {row.get('file', '')}")
+
+    if duplicates == 0:
+        print("Dedupe check: OK")
+    return duplicates
+
+
+def validate_metadata(rows: list) -> int:
+    missing_required = []
+    bad_years = []
+    bad_dois = []
+    missing_files = []
+
+    for row in rows:
+        missing = [field for field in REQUIRED_FIELDS if not (row.get(field) or "").strip()]
+        if missing:
+            missing_required.append((row, missing))
+
+        year = (row.get("year") or "").strip()
+        if year and not YEAR_RE.match(year):
+            bad_years.append((row, year))
+
+        doi = (row.get("doi") or "").strip()
+        if doi and not DOI_FULL_RE.match(doi):
+            bad_dois.append((row, doi))
+
+        file_rel = (row.get("file") or "").strip()
+        if file_rel and file_rel.endswith(".pdf") and not (top / file_rel).exists():
+            missing_files.append((row, file_rel))
+
+    issues = 0
+    if missing_required:
+        issues += 1
+        print(f"Missing required fields: {len(missing_required)}")
+        for row, fields in missing_required[:20]:
+            print(f"  - {row.get('file', '')} :: {', '.join(fields)}")
+    if bad_years:
+        issues += 1
+        print(f"Bad year format: {len(bad_years)}")
+        for row, year in bad_years[:20]:
+            print(f"  - {row.get('file', '')} :: {year}")
+    if bad_dois:
+        issues += 1
+        print(f"Bad DOI format: {len(bad_dois)}")
+        for row, doi in bad_dois[:20]:
+            print(f"  - {row.get('file', '')} :: {doi}")
+    if missing_files:
+        issues += 1
+        print(f"Missing PDF files: {len(missing_files)}")
+        for _, file_rel in missing_files[:20]:
+            print(f"  - {file_rel}")
+
+    if issues == 0:
+        print("Validation: OK")
+    return issues
+
+
+def stats_metadata(rows: list) -> None:
+    year_counts = {}
+    type_counts = {}
+    tag_counts = {}
+    missing_counts = {field: 0 for field in FIELDS}
+
+    for row in rows:
+        year = (row.get("year") or "").strip() or "unknown"
+        year_counts[year] = year_counts.get(year, 0) + 1
+
+        doc_type = (row.get("type") or "").strip() or "unknown"
+        type_counts[doc_type] = type_counts.get(doc_type, 0) + 1
+
+        for tag in split_tags(row.get("my_keywords", "")):
+            key = tag.lower()
+            tag_counts[key] = tag_counts.get(key, 0) + 1
+
+        for field in FIELDS:
+            if not (row.get(field) or "").strip():
+                missing_counts[field] += 1
+
+    print(f"Total entries: {len(rows)}")
+
+    print("By year:")
+    for year in sorted(year_counts.keys(), key=lambda y: (not y.isdigit(), int(y) if y.isdigit() else 0)):
+        print(f"  {year}: {year_counts[year]}")
+
+    print("By type:")
+    for doc_type, count in sorted(type_counts.items(), key=lambda item: (-item[1], item[0])):
+        print(f"  {doc_type}: {count}")
+
+    if tag_counts:
+        print("Top my_keywords:")
+        for tag, count in sorted(tag_counts.items(), key=lambda item: (-item[1], item[0]))[:20]:
+            print(f"  {tag}: {count}")
+
+    missing_sorted = [(field, count) for field, count in missing_counts.items() if count]
+    if missing_sorted:
+        print("Most-missing fields:")
+        for field, count in sorted(missing_sorted, key=lambda item: (-item[1], item[0]))[:10]:
+            print(f"  {field}: {count}")
+
+
+def export_metadata(rows: list, fmt: str, output=None, pretty: bool = False) -> None:
+    if fmt == "json":
+        indent = 2 if pretty else None
+        if output:
+            out_path = Path(output)
+            out_path.parent.mkdir(parents=True, exist_ok=True)
+            with out_path.open("w") as handle:
+                json.dump(rows, handle, indent=indent)
+                handle.write("\n")
+            return
+        json.dump(rows, sys.stdout, indent=indent)
+        sys.stdout.write("\n")
+        return
+
+    if fmt == "csv":
+        if output:
+            out_path = Path(output)
+            out_path.parent.mkdir(parents=True, exist_ok=True)
+            with out_path.open("w", newline="") as handle:
+                writer = csv.DictWriter(handle, fieldnames=FIELDS)
+                writer.writeheader()
+                for row in rows:
+                    writer.writerow(row)
+            return
+        writer = csv.DictWriter(sys.stdout, fieldnames=FIELDS)
+        writer.writeheader()
+        for row in rows:
+            writer.writerow(row)
+        return
+
+    raise ValueError(f"Unsupported export format: {fmt}")
+
+
+def parse_bibtex_entries(text: str) -> list:
+    entries = []
+    i = 0
+    while i < len(text):
+        if text[i] != "@":
+            i += 1
+            continue
+        brace = text.find("{", i)
+        if brace == -1:
+            break
+        depth = 0
+        j = brace
+        while j < len(text):
+            if text[j] == "{":
+                depth += 1
+            elif text[j] == "}":
+                depth -= 1
+                if depth == 0:
+                    break
+            j += 1
+        if j >= len(text):
+            break
+        body = text[brace + 1 : j]
+        comma = body.find(",")
+        if comma == -1:
+            i = j + 1
+            continue
+        key = body[:comma].strip()
+        fields = body[comma + 1 :]
+        entry = {"_key": key}
+
+        k = 0
+        while k < len(fields):
+            while k < len(fields) and fields[k] in " \t\r\n,":
+                k += 1
+            if k >= len(fields):
+                break
+            name_start = k
+            while k < len(fields) and fields[k] not in "=\n":
+                k += 1
+            name = fields[name_start:k].strip().lower()
+            if not name:
+                break
+            while k < len(fields) and fields[k] != "=":
+                k += 1
+            if k >= len(fields):
+                break
+            k += 1
+            while k < len(fields) and fields[k] in " \t\r\n":
+                k += 1
+            if k >= len(fields):
+                break
+            if fields[k] == "{":
+                depth = 0
+                val_start = k + 1
+                while k < len(fields):
+                    if fields[k] == "{":
+                        depth += 1
+                    elif fields[k] == "}":
+                        depth -= 1
+                        if depth == 0:
+                            break
+                    k += 1
+                value = fields[val_start:k].strip()
+                k += 1
+            elif fields[k] == "\"":
+                k += 1
+                val_start = k
+                while k < len(fields) and fields[k] != "\"":
+                    k += 1
+                value = fields[val_start:k].strip()
+                k += 1
+            else:
+                val_start = k
+                while k < len(fields) and fields[k] not in ",\n":
+                    k += 1
+                value = fields[val_start:k].strip()
+            if name:
+                entry[name] = re.sub(r"\s+", " ", value)
+        entries.append(entry)
+        i = j + 1
+    return entries
+
+
+def import_bibtex(path: Path, force: bool = False) -> int:
+    if not path.exists():
+        print(f"BibTeX file not found: {path}")
+        return 0
+    text = path.read_text(errors="ignore")
+    entries = parse_bibtex_entries(text)
+    if not entries:
+        print("No BibTeX entries found.")
+        return 0
+
+    rows = load_rows()
+    doi_index = {}
+    title_index = {}
+    for row in rows:
+        doi = (row.get("doi") or "").strip().lower()
+        if doi:
+            doi_index[doi] = row
+        title = normalize_title_text(row.get("title", "")).lower()
+        if title:
+            title_index[title] = row
+
+    updated = 0
+    unmatched = 0
+    for entry in entries:
+        title = normalize_title_text(entry.get("title", ""))
+        doi = (entry.get("doi") or "").strip().lower()
+        row = None
+        if doi and doi in doi_index:
+            row = doi_index[doi]
+        elif title and title.lower() in title_index:
+            row = title_index[title.lower()]
+        if row is None:
+            unmatched += 1
+            continue
+
+        def set_field(field, value):
+            if not value:
+                return False
+            if force or not (row.get(field) or "").strip():
+                row[field] = value
+                return True
+            return False
+
+        changed = False
+        changed |= set_field("title", title)
+        changed |= set_field("year", entry.get("year", ""))
+        changed |= set_field("doi", entry.get("doi", ""))
+        changed |= set_field("author", entry.get("author", ""))
+        changed |= set_field("journal", entry.get("journal", ""))
+        if changed:
+            updated += 1
+
+    if updated:
+        save_metadata(rows)
+    print(f"Updated entries: {updated}")
+    print(f"Unmatched entries: {unmatched}")
+    return updated
+
+
 def print_codes(rows: list) -> None:
     for row in rows:
         print(row.get("code", ""))
@@ -434,6 +823,28 @@ def main():
     tag.add_argument("--force", action="store_true", help="Overwrite existing my_keywords")
 
     verify = sub.add_parser("verify", help="Check metadata integrity")
+    cleanup = sub.add_parser("cleanup", help="Normalize titles in metadata")
+    cleanup.add_argument("--rename", action="store_true", help="Rename files and codes to match")
+    cleanup.add_argument("--dry-run", action="store_true", help="Preview changes without writing")
+
+    dedupe = sub.add_parser("dedupe", help="Report duplicate titles or DOIs")
+
+    bibtex = sub.add_parser("import-bibtex", help="Update metadata from a BibTeX file")
+    bibtex.add_argument("path", help="Path to .bib file")
+    bibtex.add_argument("--force", action="store_true", help="Overwrite existing fields")
+
+    validate = sub.add_parser("validate", help="Validate required fields and formats")
+    stats = sub.add_parser("stats", help="Summarize metadata counts")
+
+    export = sub.add_parser("export", help="Export filtered metadata to JSON or CSV")
+    export.add_argument("--format", choices=["json", "csv"], default="json")
+    export.add_argument("--output", help="Write to file instead of stdout")
+    export.add_argument("--pretty", action="store_true", help="Pretty-print JSON output")
+    export.add_argument("--from-year", type=int)
+    export.add_argument("--to-year", type=int)
+    export.add_argument("--journal")
+    export.add_argument("--keyword")
+    export.add_argument("--my-keyword")
 
     args = parser.parse_args()
 
@@ -511,6 +922,44 @@ def main():
         issues = verify_integrity()
         if issues:
             raise SystemExit(1)
+        return
+
+    if args.command == "cleanup":
+        cleanup_titles(rename_files=args.rename, dry_run=args.dry_run)
+        return
+
+    if args.command == "dedupe":
+        duplicates = dedupe_metadata()
+        if duplicates:
+            raise SystemExit(1)
+        return
+
+    if args.command == "import-bibtex":
+        updated = import_bibtex(Path(args.path), force=args.force)
+        if updated:
+            print("BibTeX import complete.")
+        return
+
+    if args.command == "validate":
+        issues = validate_metadata(rows)
+        if issues:
+            raise SystemExit(1)
+        return
+
+    if args.command == "stats":
+        stats_metadata(rows)
+        return
+
+    if args.command == "export":
+        filtered = filter_rows(
+            rows,
+            year_from=args.from_year,
+            year_to=args.to_year,
+            journal=args.journal,
+            keyword=args.keyword,
+            my_keyword=args.my_keyword,
+        )
+        export_metadata(filtered, args.format, args.output, pretty=args.pretty)
         return
 
 

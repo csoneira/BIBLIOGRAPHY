@@ -92,6 +92,32 @@ python3 CODE/bib.py tag
 
 Use `--force` to overwrite existing `my_keywords`.
 
+## Maintenance helpers
+
+Validate metadata fields and formats:
+
+```
+python3 CODE/bib.py validate
+```
+
+Summarize counts by year/type/tag:
+
+```
+python3 CODE/bib.py stats
+```
+
+Export filtered results to JSON or CSV:
+
+```
+python3 CODE/bib.py export --format json --output /tmp/bibliography.json --from-year 2020
+```
+
+Backup metadata and collections:
+
+```
+scripts/backup_metadata.sh
+```
+
 ## Lightweight GUI finder
 
 Serve the repo locally and open the viewer:

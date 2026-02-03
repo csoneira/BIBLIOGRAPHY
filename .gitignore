@@ -1,3 +1,4 @@
 PDFs/
 __pycache__/
 *.pyc
+METADATA/backups/
