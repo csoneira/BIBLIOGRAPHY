@@ -53,6 +53,8 @@ class TestBibScan(unittest.TestCase):
             self.assertEqual(row["code"], pdfs[0].stem)
             self.assertEqual(row["year"], "2020")
             self.assertEqual(row["type"], "article")
+            self.assertEqual(row["unread"], "")
+            self.assertRegex(row["added_at"], r"^\d{4}-\d{2}-\d{2}$")
 
 
 if __name__ == "__main__":

@@ -122,6 +122,17 @@
         line-height: 1;
       }
 
+      .unread {
+        background: transparent;
+        color: #7b1f0f;
+        border: 1px solid #d6d6d6;
+        border-radius: 999px;
+        padding: 3px 10px;
+        font-size: 12px;
+        font-weight: 600;
+        line-height: 1;
+      }
+
       .results {
         margin: 0 10vw 40px;
         display: grid;
@@ -146,6 +157,12 @@
         align-items: center;
         justify-content: space-between;
         gap: 12px;
+      }
+
+      .card-actions {
+        display: flex;
+        align-items: center;
+        gap: 8px;
       }
 
       .meta {
@@ -208,6 +225,10 @@
           <input id="starOnly" type="checkbox" />
         </div>
         <div>
+          <label for="unreadOnly">Unread only</label>
+          <input id="unreadOnly" type="checkbox" />
+        </div>
+        <div>
           <label for="journal">Journal contains</label>
           <input id="journal" type="text" placeholder="Nature, NIM A" />
         </div>
@@ -218,6 +239,22 @@
         <div>
           <label for="myKeyword">My keywords contain</label>
           <input id="myKeyword" type="text" placeholder="project-x" />
+        </div>
+        <div>
+          <label for="addedFrom">Added from</label>
+          <input id="addedFrom" type="date" />
+        </div>
+        <div>
+          <label for="addedTo">Added to</label>
+          <input id="addedTo" type="date" />
+        </div>
+        <div>
+          <label for="addedSort">Sort by added date</label>
+          <select id="addedSort">
+            <option value="">No sort</option>
+            <option value="desc">Newest first</option>
+            <option value="asc">Oldest first</option>
+          </select>
         </div>
         <div>
           <label for="savedList">Saved list</label>

@@ -50,6 +50,14 @@ class TestMetadataSchema(unittest.TestCase):
                 if star:
                     self.assertIn(star, {"1"})
 
+                unread = (row.get("unread") or "").strip()
+                if unread:
+                    self.assertIn(unread, {"1"})
+
+                added_at = (row.get("added_at") or "").strip()
+                if added_at:
+                    self.assertRegex(added_at, r"^\d{4}-\d{2}-\d{2}$")
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -35,6 +35,7 @@ Lightweight, git-friendly bibliography tracker. PDFs stay in `PDFs/` (gitignored
 - `keywords`: keywords from the paper or your tags.
 - `my_keywords`: your project- or topic-specific tags.
 - `star`: set to `1` when starred in the viewer.
+- `unread`: set to `1` for papers you want to read later.
 - `added_at`: date added to the bibliography (YYYY-MM-DD).
 - `abstract`: full abstract text.
 - `notes`: any extra notes (optional).
@@ -52,6 +53,12 @@ List codes by filters:
 
 ```
 python3 CODE/bib.py find --from-year 2022 --to-year 2025 --keyword muon
+```
+
+Filter and sort by bibliography addition date:
+
+```
+python3 CODE/bib.py find --added-from 2026-01-01 --added-to 2026-01-31 --sort-added desc
 ```
 
 Save a named collection:
@@ -112,6 +119,8 @@ Export filtered results to JSON or CSV:
 python3 CODE/bib.py export --format json --output /tmp/bibliography.json --from-year 2020
 ```
 
+You can also use `--added-from`, `--added-to`, `--sort-added asc|desc`, and `--unread-only` with `find`, `save-collection`, and `export`.
+
 Backup metadata and collections:
 
 ```
@@ -126,10 +135,11 @@ Serve the repo locally and open the viewer:
 python3 CODE/viewer_server.py
 ```
 
-Then visit `http://localhost:8000/VIEWER/viewer.html` and filter on year, journal, keywords, or starred items.
+Then visit `http://localhost:8000/VIEWER/viewer.html` and filter on year, journal, keywords, starred items, unread items, and `added_at` date range. You can also sort by added date.
 
 Use the **Save list** button to write a JSON file into `SAVED_LISTS/`.
 Click the star next to a title to toggle `star` in `METADATA/metadata.csv`.
+Use the read/unread button next to each title to toggle `unread` in `METADATA/metadata.csv`.
 
 ## Desktop launcher
 

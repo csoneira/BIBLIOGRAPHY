@@ -7,7 +7,7 @@ import re
 import shutil
 import subprocess
 import sys
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from pathlib import Path
 
 top = Path(__file__).resolve().parent.parent
@@ -30,6 +30,7 @@ FIELDS = [
     "keywords",
     "my_keywords",
     "star",
+    "unread",
     "added_at",
     "abstract",
     "notes",
@@ -38,6 +39,7 @@ FIELDS = [
 DOI_RE = re.compile(r"\b10\.\d{4,9}/[^\s\"<>]+", re.IGNORECASE)
 DOI_FULL_RE = re.compile(r"^10\.\d{4,9}/\S+$", re.IGNORECASE)
 YEAR_RE = re.compile(r"^\d{4}$")
+ADDED_AT_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 ARXIV_RE = re.compile(r"(?<!\d)(\d{2})(\d{2})\.\d{4,5}(?:v\d+)?(?!\d)")
 ARXIV_TEXT_RE = re.compile(r"arxiv:\s*(\d{4})\.(\d{4,5})", re.IGNORECASE)
 BAD_TITLE_RE = re.compile(
@@ -300,6 +302,7 @@ def scan_pdfs(dry_run: bool = False) -> list:
             "keywords": prev.get("keywords", ""),
             "my_keywords": prev.get("my_keywords", auto_tags),
             "star": prev.get("star", ""),
+            "unread": prev.get("unread", ""),
             "added_at": prev.get("added_at", datetime.now(timezone.utc).strftime("%Y-%m-%d")),
             "abstract": prev.get("abstract", ""),
             "notes": prev.get("notes", ""),
@@ -322,7 +325,43 @@ def save_collections(data: dict) -> None:
         json.dump(data, handle, indent=2, sort_keys=True)
 
 
-def filter_rows(rows, year_from=None, year_to=None, journal=None, keyword=None, my_keyword=None):
+def parse_ymd_date(value: str):
+    value = (value or "").strip()
+    if not value:
+        return None
+    if not ADDED_AT_RE.match(value):
+        return None
+    try:
+        return date.fromisoformat(value)
+    except ValueError:
+        return None
+
+
+def sort_rows_by_added(rows: list, descending: bool = False) -> list:
+    dated = []
+    missing = []
+    for row in rows:
+        parsed = parse_ymd_date(row.get("added_at", ""))
+        if parsed is None:
+            missing.append(row)
+            continue
+        dated.append((parsed, row))
+
+    dated.sort(key=lambda item: item[0], reverse=descending)
+    return [row for _, row in dated] + missing
+
+
+def filter_rows(
+    rows,
+    year_from=None,
+    year_to=None,
+    journal=None,
+    keyword=None,
+    my_keyword=None,
+    added_from=None,
+    added_to=None,
+    unread_only: bool = False,
+):
     def match_year(row):
         try:
             year = int(row.get("year", "0"))
@@ -339,6 +378,16 @@ def filter_rows(rows, year_from=None, year_to=None, journal=None, keyword=None, 
             return True
         return needle.lower() in field.lower()
 
+    def match_added(row):
+        added_at = parse_ymd_date(row.get("added_at", ""))
+        if added_at is None:
+            return False
+        if added_from is not None and added_at < added_from:
+            return False
+        if added_to is not None and added_at > added_to:
+            return False
+        return True
+
     filtered = []
     for row in rows:
         if year_from or year_to:
@@ -349,6 +398,11 @@ def filter_rows(rows, year_from=None, year_to=None, journal=None, keyword=None, 
         if keyword and not match_text(row.get("keywords", ""), keyword):
             continue
         if my_keyword and not match_text(row.get("my_keywords", ""), my_keyword):
+            continue
+        if added_from or added_to:
+            if not match_added(row):
+                continue
+        if unread_only and (row.get("unread") or "").strip() != "1":
             continue
         filtered.append(row)
     return filtered
@@ -526,6 +580,8 @@ def validate_metadata(rows: list) -> int:
     missing_required = []
     bad_years = []
     bad_dois = []
+    bad_unread = []
+    bad_added_dates = []
     missing_files = []
 
     for row in rows:
@@ -540,6 +596,14 @@ def validate_metadata(rows: list) -> int:
         doi = (row.get("doi") or "").strip()
         if doi and not DOI_FULL_RE.match(doi):
             bad_dois.append((row, doi))
+
+        unread = (row.get("unread") or "").strip()
+        if unread and unread != "1":
+            bad_unread.append((row, unread))
+
+        added_at = (row.get("added_at") or "").strip()
+        if added_at and parse_ymd_date(added_at) is None:
+            bad_added_dates.append((row, added_at))
 
         file_rel = (row.get("file") or "").strip()
         if file_rel and file_rel.endswith(".pdf") and not (top / file_rel).exists():
@@ -561,6 +625,16 @@ def validate_metadata(rows: list) -> int:
         print(f"Bad DOI format: {len(bad_dois)}")
         for row, doi in bad_dois[:20]:
             print(f"  - {row.get('file', '')} :: {doi}")
+    if bad_unread:
+        issues += 1
+        print(f"Bad unread format: {len(bad_unread)}")
+        for row, unread in bad_unread[:20]:
+            print(f"  - {row.get('file', '')} :: {unread}")
+    if bad_added_dates:
+        issues += 1
+        print(f"Bad added_at format: {len(bad_added_dates)}")
+        for row, added_at in bad_added_dates[:20]:
+            print(f"  - {row.get('file', '')} :: {added_at}")
     if missing_files:
         issues += 1
         print(f"Missing PDF files: {len(missing_files)}")
@@ -796,6 +870,13 @@ def print_codes(rows: list) -> None:
         print(row.get("code", ""))
 
 
+def parse_cli_ymd_date(value: str, flag: str, parser) -> date:
+    parsed = parse_ymd_date(value)
+    if parsed is None:
+        parser.error(f"{flag} must be in YYYY-MM-DD format")
+    return parsed
+
+
 def main():
     parser = argparse.ArgumentParser(description="Bibliography helper")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -809,6 +890,10 @@ def main():
     find.add_argument("--journal")
     find.add_argument("--keyword")
     find.add_argument("--my-keyword")
+    find.add_argument("--added-from", help="Filter by added_at >= YYYY-MM-DD")
+    find.add_argument("--added-to", help="Filter by added_at <= YYYY-MM-DD")
+    find.add_argument("--sort-added", choices=["asc", "desc"], help="Sort by added_at")
+    find.add_argument("--unread-only", action="store_true", help="Only include unread entries")
 
     save = sub.add_parser("save-collection", help="Save filtered results under a name")
     save.add_argument("--name", required=True)
@@ -817,6 +902,10 @@ def main():
     save.add_argument("--journal")
     save.add_argument("--keyword")
     save.add_argument("--my-keyword")
+    save.add_argument("--added-from", help="Filter by added_at >= YYYY-MM-DD")
+    save.add_argument("--added-to", help="Filter by added_at <= YYYY-MM-DD")
+    save.add_argument("--sort-added", choices=["asc", "desc"], help="Sort by added_at")
+    save.add_argument("--unread-only", action="store_true", help="Only include unread entries")
 
     list_c = sub.add_parser("list-collections", help="List saved collections")
     tag = sub.add_parser("tag", help="Auto-tag my_keywords using config.json")
@@ -845,6 +934,10 @@ def main():
     export.add_argument("--journal")
     export.add_argument("--keyword")
     export.add_argument("--my-keyword")
+    export.add_argument("--added-from", help="Filter by added_at >= YYYY-MM-DD")
+    export.add_argument("--added-to", help="Filter by added_at <= YYYY-MM-DD")
+    export.add_argument("--sort-added", choices=["asc", "desc"], help="Sort by added_at")
+    export.add_argument("--unread-only", action="store_true", help="Only include unread entries")
 
     args = parser.parse_args()
 
@@ -854,6 +947,15 @@ def main():
 
     rows = load_rows()
 
+    added_from = None
+    added_to = None
+    if hasattr(args, "added_from") and args.added_from:
+        added_from = parse_cli_ymd_date(args.added_from, "--added-from", parser)
+    if hasattr(args, "added_to") and args.added_to:
+        added_to = parse_cli_ymd_date(args.added_to, "--added-to", parser)
+    if added_from and added_to and added_from > added_to:
+        parser.error("--added-from cannot be after --added-to")
+
     if args.command == "find":
         filtered = filter_rows(
             rows,
@@ -862,7 +964,12 @@ def main():
             journal=args.journal,
             keyword=args.keyword,
             my_keyword=args.my_keyword,
+            added_from=added_from,
+            added_to=added_to,
+            unread_only=args.unread_only,
         )
+        if args.sort_added:
+            filtered = sort_rows_by_added(filtered, descending=args.sort_added == "desc")
         print_codes(filtered)
         return
 
@@ -874,7 +981,12 @@ def main():
             journal=args.journal,
             keyword=args.keyword,
             my_keyword=args.my_keyword,
+            added_from=added_from,
+            added_to=added_to,
+            unread_only=args.unread_only,
         )
+        if args.sort_added:
+            filtered = sort_rows_by_added(filtered, descending=args.sort_added == "desc")
         data = load_collections()
         data[args.name] = {
             "codes": [row.get("code", "") for row in filtered if row.get("code")],
@@ -884,6 +996,10 @@ def main():
                 "journal": args.journal,
                 "keyword": args.keyword,
                 "my_keyword": args.my_keyword,
+                "added_from": args.added_from,
+                "added_to": args.added_to,
+                "sort_added": args.sort_added,
+                "unread_only": args.unread_only,
             },
         }
         save_collections(data)
@@ -958,7 +1074,12 @@ def main():
             journal=args.journal,
             keyword=args.keyword,
             my_keyword=args.my_keyword,
+            added_from=added_from,
+            added_to=added_to,
+            unread_only=args.unread_only,
         )
+        if args.sort_added:
+            filtered = sort_rows_by_added(filtered, descending=args.sort_added == "desc")
         export_metadata(filtered, args.format, args.output, pretty=args.pretty)
         return
 

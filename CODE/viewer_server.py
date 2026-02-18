@@ -26,6 +26,9 @@ class Handler(SimpleHTTPRequestHandler):
             if self.path == "/toggle-star":
                 self._handle_toggle_star()
                 return
+            if self.path == "/toggle-unread":
+                self._handle_toggle_unread()
+                return
             self.send_error(404, "Not Found")
             return
         content_length = int(self.headers.get("Content-Length", "0"))
@@ -87,6 +90,12 @@ class Handler(SimpleHTTPRequestHandler):
         self.wfile.write(json.dumps(items).encode("utf-8"))
 
     def _handle_toggle_star(self):
+        self._handle_toggle_flag("star")
+
+    def _handle_toggle_unread(self):
+        self._handle_toggle_flag("unread")
+
+    def _handle_toggle_flag(self, field_name):
         content_length = int(self.headers.get("Content-Length", "0"))
         raw = self.rfile.read(content_length)
         try:
@@ -96,7 +105,7 @@ class Handler(SimpleHTTPRequestHandler):
             return
 
         file_path = payload.get("file", "").strip()
-        star = payload.get("star", "")
+        value = payload.get(field_name, "")
         if not file_path:
             self.send_error(400, "Missing file")
             return
@@ -112,11 +121,11 @@ class Handler(SimpleHTTPRequestHandler):
             fieldnames = list(reader.fieldnames or [])
             for row in reader:
                 if row.get("file") == file_path:
-                    row["star"] = "1" if star == "1" else ""
+                    row[field_name] = "1" if value == "1" else ""
                 rows.append(row)
 
-        if "star" not in fieldnames:
-            fieldnames.append("star")
+        if field_name not in fieldnames:
+            fieldnames.append(field_name)
 
         with metadata_path.open("w", newline="") as handle:
             writer = csv.DictWriter(handle, fieldnames=fieldnames)
@@ -126,7 +135,7 @@ class Handler(SimpleHTTPRequestHandler):
         self.send_response(200)
         self.send_header("Content-Type", "application/json")
         self.end_headers()
-        self.wfile.write(json.dumps({"file": file_path, "star": star}).encode("utf-8"))
+        self.wfile.write(json.dumps({"file": file_path, field_name: value}).encode("utf-8"))
 
 
 if __name__ == "__main__":

@@ -60,11 +60,17 @@ function toRows(csvText) {
   });
 }
 
+function isIsoDate(value) {
+  return /^\d{4}-\d{2}-\d{2}$/.test((value || "").trim());
+}
+
 function applyFilters(rows, filters) {
   return rows.filter((row) => {
     const year = parseInt(row.year || "0", 10);
     const typeValue = (row.type || "").toLowerCase();
     const starValue = (row.star || "").toString();
+    const unreadValue = (row.unread || "").toString();
+    const addedAt = (row.added_at || "").trim();
     if (filters.fromYear && year < filters.fromYear) {
       return false;
     }
@@ -80,6 +86,9 @@ function applyFilters(rows, filters) {
     if (filters.starOnly && starValue !== "1") {
       return false;
     }
+    if (filters.unreadOnly && unreadValue !== "1") {
+      return false;
+    }
     if (filters.journal && !row.journal.toLowerCase().includes(filters.journal)) {
       return false;
     }
@@ -89,8 +98,40 @@ function applyFilters(rows, filters) {
     if (filters.myKeyword && !row.my_keywords.toLowerCase().includes(filters.myKeyword)) {
       return false;
     }
+    if (filters.addedFrom) {
+      if (!isIsoDate(addedAt) || addedAt < filters.addedFrom) {
+        return false;
+      }
+    }
+    if (filters.addedTo) {
+      if (!isIsoDate(addedAt) || addedAt > filters.addedTo) {
+        return false;
+      }
+    }
     return true;
   });
+}
+
+function sortByAddedDate(rows, direction) {
+  if (!direction) {
+    return rows;
+  }
+
+  const withDate = [];
+  const withoutDate = [];
+  rows.forEach((row) => {
+    if (isIsoDate(row.added_at || "")) {
+      withDate.push(row);
+    } else {
+      withoutDate.push(row);
+    }
+  });
+
+  withDate.sort((a, b) => (a.added_at || "").localeCompare(b.added_at || ""));
+  if (direction === "desc") {
+    withDate.reverse();
+  }
+  return withDate.concat(withoutDate);
 }
 
 function applySavedList(rows, savedList) {
@@ -145,13 +186,35 @@ function renderResults(rows) {
         alert("Failed to save star. Start the viewer server with: python3 CODE/viewer_server.py");
       }
     });
-    header.appendChild(star);
+    const unread = document.createElement("button");
+    unread.className = "unread";
+    unread.textContent = row.unread === "1" ? "Unread" : "Read";
+    unread.title = "Toggle unread";
+    unread.addEventListener("click", async (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      const next = row.unread === "1" ? "" : "1";
+      try {
+        await setUnreadOnServer(row.file, next);
+        row.unread = next;
+        unread.textContent = row.unread === "1" ? "Unread" : "Read";
+      } catch (err) {
+        alert("Failed to save unread. Start the viewer server with: python3 CODE/viewer_server.py");
+      }
+    });
+
+    const actions = document.createElement("div");
+    actions.className = "card-actions";
+    actions.appendChild(unread);
+    actions.appendChild(star);
+    header.appendChild(actions);
 
     card.appendChild(header);
 
     const meta = document.createElement("div");
     meta.className = "meta";
-    meta.textContent = [row.author, row.journal, row.year]
+    const addedLabel = row.added_at ? `added ${row.added_at}` : "";
+    meta.textContent = [row.author, row.journal, row.year, addedLabel]
       .filter(Boolean)
       .join(" · ");
     card.appendChild(meta);
@@ -172,9 +235,13 @@ function getFilters() {
     type: document.getElementById("typeFilter").value.trim().toLowerCase(),
     title: document.getElementById("titleFilter").value.trim().toLowerCase(),
     starOnly: document.getElementById("starOnly").checked,
+    unreadOnly: document.getElementById("unreadOnly").checked,
     journal: document.getElementById("journal").value.trim().toLowerCase(),
     keyword: document.getElementById("keyword").value.trim().toLowerCase(),
     myKeyword: document.getElementById("myKeyword").value.trim().toLowerCase(),
+    addedFrom: document.getElementById("addedFrom").value.trim(),
+    addedTo: document.getElementById("addedTo").value.trim(),
+    addedSort: document.getElementById("addedSort").value,
   };
 }
 
@@ -186,6 +253,18 @@ async function setStarOnServer(file, star) {
   });
   if (!response.ok) {
     throw new Error("Failed to save star.");
+  }
+  return response.json();
+}
+
+async function setUnreadOnServer(file, unread) {
+  const response = await fetch("/toggle-unread", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ file, unread }),
+  });
+  if (!response.ok) {
+    throw new Error("Failed to save unread.");
   }
   return response.json();
 }
@@ -254,7 +333,7 @@ async function init() {
 
     document.getElementById("applyBtn").addEventListener("click", () => {
       const filters = getFilters();
-      filteredRows = applyFilters(rows, filters);
+      filteredRows = sortByAddedDate(applyFilters(rows, filters), filters.addedSort);
       renderResults(filteredRows);
     });
 
@@ -264,9 +343,13 @@ async function init() {
       document.getElementById("typeFilter").value = "";
       document.getElementById("titleFilter").value = "";
       document.getElementById("starOnly").checked = false;
+      document.getElementById("unreadOnly").checked = false;
       document.getElementById("journal").value = "";
       document.getElementById("keyword").value = "";
       document.getElementById("myKeyword").value = "";
+      document.getElementById("addedFrom").value = "";
+      document.getElementById("addedTo").value = "";
+      document.getElementById("addedSort").value = "";
       document.getElementById("savedList").value = "";
       filteredRows = rows;
       renderResults(rows);
