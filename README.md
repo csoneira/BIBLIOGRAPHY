@@ -37,7 +37,6 @@ Lightweight, git-friendly bibliography tracker. PDFs stay in `PDFs/` (gitignored
 - `star`: set to `1` when starred in the viewer.
 - `unread`: set to `1` for papers you want to read later.
 - `added_at`: date added to the bibliography (YYYY-MM-DD).
-- `abstract`: full abstract text.
 - `notes`: any extra notes (optional).
 
 ### Tips

@@ -32,7 +32,6 @@ FIELDS = [
     "star",
     "unread",
     "added_at",
-    "abstract",
     "notes",
 ]
 
@@ -304,7 +303,6 @@ def scan_pdfs(dry_run: bool = False) -> list:
             "star": prev.get("star", ""),
             "unread": prev.get("unread", ""),
             "added_at": prev.get("added_at", datetime.now(timezone.utc).strftime("%Y-%m-%d")),
-            "abstract": prev.get("abstract", ""),
             "notes": prev.get("notes", ""),
         }
         rows.append(row)
@@ -1024,7 +1022,7 @@ def main():
                 continue
             text = run_pdftotext_full(path)
             basis = "\n".join(
-                [row.get("title", ""), row.get("keywords", ""), row.get("abstract", ""), text]
+                [row.get("title", ""), row.get("keywords", ""), text]
             )
             tags = suggest_my_keywords(basis, config)
             if tags:
