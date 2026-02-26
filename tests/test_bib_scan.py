@@ -42,7 +42,7 @@ class TestBibScan(unittest.TestCase):
 
             pdfs = list((tmp_root / "PDFs").glob("*.pdf"))
             self.assertEqual(len(pdfs), 1)
-            self.assertEqual(pdfs[0].name, "2020_article_2020-mytest.pdf")
+            self.assertEqual(pdfs[0].name, "2020_article_2020_mytest.pdf")
 
             self.assertTrue(bib.METADATA_FILE.exists())
             with bib.METADATA_FILE.open() as handle:

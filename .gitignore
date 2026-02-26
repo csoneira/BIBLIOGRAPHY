@@ -2,3 +2,6 @@ PDFs/
 __pycache__/
 *.pyc
 METADATA/backups/
+METADATA/metadata.csv.bak*
+METADATA/metadata.csv.backup*
+METADATA/metadata.csv.ocr-backup*

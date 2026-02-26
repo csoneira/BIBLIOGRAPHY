@@ -9,7 +9,7 @@ mkdir -p "$backup_dir"
 
 ts=$(date -u +"%Y%m%dT%H%M%SZ")
 
-for name in metadata.csv collections.json; do
+for name in metadata.csv abstracts.csv collections.json; do
   src="$metadata_dir/$name"
   if [ -f "$src" ]; then
     base="${name%.*}"

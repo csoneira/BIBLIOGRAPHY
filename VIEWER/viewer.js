@@ -60,6 +60,18 @@ function toRows(csvText) {
   });
 }
 
+function toAbstractMap(rows) {
+  const map = {};
+  rows.forEach((row) => {
+    const code = (row.code || "").trim();
+    if (!code) {
+      return;
+    }
+    map[code] = (row.abstract || "").trim();
+  });
+  return map;
+}
+
 function isIsoDate(value) {
   return /^\d{4}-\d{2}-\d{2}$/.test((value || "").trim());
 }
@@ -80,7 +92,7 @@ function applyFilters(rows, filters) {
     if (filters.type && !typeValue.includes(filters.type)) {
       return false;
     }
-    if (filters.title && !row.title.toLowerCase().includes(filters.title)) {
+    if (filters.title && !(row.title || "").toLowerCase().includes(filters.title)) {
       return false;
     }
     if (filters.starOnly && starValue !== "1") {
@@ -89,13 +101,16 @@ function applyFilters(rows, filters) {
     if (filters.unreadOnly && unreadValue !== "1") {
       return false;
     }
-    if (filters.journal && !row.journal.toLowerCase().includes(filters.journal)) {
+    if (filters.journal && !(row.journal || "").toLowerCase().includes(filters.journal)) {
       return false;
     }
-    if (filters.keyword && !row.keywords.toLowerCase().includes(filters.keyword)) {
+    if (filters.keyword && !(row.keywords || "").toLowerCase().includes(filters.keyword)) {
       return false;
     }
-    if (filters.myKeyword && !row.my_keywords.toLowerCase().includes(filters.myKeyword)) {
+    if (filters.myKeyword && !(row.my_keywords || "").toLowerCase().includes(filters.myKeyword)) {
+      return false;
+    }
+    if (filters.abstract && !(row.abstract || "").toLowerCase().includes(filters.abstract)) {
       return false;
     }
     if (filters.addedFrom) {
@@ -224,6 +239,26 @@ function renderResults(rows) {
     code.textContent = row.code || "";
     card.appendChild(code);
 
+    const abstractText = (row.abstract || "").trim();
+    const abstractToggle = document.createElement("button");
+    abstractToggle.className = "toggle-abstract";
+    abstractToggle.textContent = abstractText ? "Show abstract" : "No abstract";
+    abstractToggle.disabled = !abstractText;
+
+    const abstract = document.createElement("div");
+    abstract.className = "abstract";
+    abstract.textContent = abstractText;
+    abstract.style.display = "none";
+
+    abstractToggle.addEventListener("click", () => {
+      const hidden = abstract.style.display === "none";
+      abstract.style.display = hidden ? "" : "none";
+      abstractToggle.textContent = hidden ? "Hide abstract" : "Show abstract";
+    });
+
+    card.appendChild(abstractToggle);
+    card.appendChild(abstract);
+
     container.appendChild(card);
   });
 }
@@ -239,6 +274,7 @@ function getFilters() {
     journal: document.getElementById("journal").value.trim().toLowerCase(),
     keyword: document.getElementById("keyword").value.trim().toLowerCase(),
     myKeyword: document.getElementById("myKeyword").value.trim().toLowerCase(),
+    abstract: document.getElementById("abstractFilter").value.trim().toLowerCase(),
     addedFrom: document.getElementById("addedFrom").value.trim(),
     addedTo: document.getElementById("addedTo").value.trim(),
     addedSort: document.getElementById("addedSort").value,
@@ -287,12 +323,45 @@ async function saveListToServer(name, rows, filters) {
 }
 
 async function loadData() {
-  const response = await fetch("../METADATA/metadata.csv");
-  if (!response.ok) {
+  const metadataResponse = await fetch("../METADATA/metadata.csv");
+  if (!metadataResponse.ok) {
     throw new Error("metadata.csv not found. Run python3 CODE/bib.py scan.");
   }
-  const text = await response.text();
-  return toRows(text);
+  const text = await metadataResponse.text();
+  const rows = toRows(text);
+  const abstractsByCode = await loadAbstractsMap();
+  rows.forEach((row) => {
+    row.abstract = abstractsByCode[row.code] || "";
+  });
+  return rows;
+}
+
+async function loadAbstractsMap() {
+  try {
+    const response = await fetch("/abstracts");
+    if (response.ok) {
+      const payload = await response.json();
+      if (payload && typeof payload === "object") {
+        if (payload.abstracts && typeof payload.abstracts === "object") {
+          return payload.abstracts;
+        }
+        return payload;
+      }
+    }
+  } catch (err) {
+    // Fall through to local CSV loading.
+  }
+
+  try {
+    const response = await fetch("../METADATA/abstracts.csv");
+    if (!response.ok) {
+      return {};
+    }
+    const text = await response.text();
+    return toAbstractMap(toRows(text));
+  } catch (err) {
+    return {};
+  }
 }
 
 async function loadSavedLists() {
@@ -347,6 +416,7 @@ async function init() {
       document.getElementById("journal").value = "";
       document.getElementById("keyword").value = "";
       document.getElementById("myKeyword").value = "";
+      document.getElementById("abstractFilter").value = "";
       document.getElementById("addedFrom").value = "";
       document.getElementById("addedTo").value = "";
       document.getElementById("addedSort").value = "";

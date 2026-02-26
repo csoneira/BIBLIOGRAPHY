@@ -4,9 +4,36 @@ import json
 import os
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+from urllib.parse import parse_qs, urlparse
 
 ROOT = Path(__file__).resolve().parent.parent
 SAVED_LISTS_DIR = ROOT / "SAVED_LISTS"
+ABSTRACTS_FILE = ROOT / "METADATA" / "abstracts.csv"
+_ABSTRACT_CACHE = {"mtime_ns": None, "data": {}}
+
+
+def load_abstracts_map() -> dict:
+    if not ABSTRACTS_FILE.exists():
+        _ABSTRACT_CACHE["mtime_ns"] = None
+        _ABSTRACT_CACHE["data"] = {}
+        return {}
+
+    mtime_ns = ABSTRACTS_FILE.stat().st_mtime_ns
+    if _ABSTRACT_CACHE["mtime_ns"] == mtime_ns:
+        return dict(_ABSTRACT_CACHE["data"])
+
+    data = {}
+    with ABSTRACTS_FILE.open(newline="") as handle:
+        reader = csv.DictReader(handle)
+        for row in reader:
+            code = (row.get("code") or "").strip()
+            if not code:
+                continue
+            data[code] = row.get("abstract", "")
+
+    _ABSTRACT_CACHE["mtime_ns"] = mtime_ns
+    _ABSTRACT_CACHE["data"] = data
+    return dict(data)
 
 
 class Handler(SimpleHTTPRequestHandler):
@@ -16,8 +43,15 @@ class Handler(SimpleHTTPRequestHandler):
         return str(ROOT / rel)
 
     def do_GET(self):
-        if self.path == "/saved-lists":
+        parsed = urlparse(self.path)
+        if parsed.path == "/saved-lists":
             self._handle_saved_lists()
+            return
+        if parsed.path == "/abstracts":
+            self._handle_abstracts()
+            return
+        if parsed.path == "/abstract":
+            self._handle_abstract(parsed.query)
             return
         super().do_GET()
 
@@ -84,10 +118,21 @@ class Handler(SimpleHTTPRequestHandler):
                 }
             )
 
-        self.send_response(200)
-        self.send_header("Content-Type", "application/json")
-        self.end_headers()
-        self.wfile.write(json.dumps(items).encode("utf-8"))
+        self._send_json(items)
+
+    def _handle_abstracts(self):
+        data = load_abstracts_map()
+        self._send_json({"abstracts": data})
+
+    def _handle_abstract(self, query: str):
+        params = parse_qs(query)
+        code = (params.get("code", [""])[0] or "").strip()
+        if not code:
+            self.send_error(400, "Missing code")
+            return
+
+        abstracts = load_abstracts_map()
+        self._send_json({"code": code, "abstract": abstracts.get(code, "")})
 
     def _handle_toggle_star(self):
         self._handle_toggle_flag("star")
@@ -132,10 +177,13 @@ class Handler(SimpleHTTPRequestHandler):
             writer.writeheader()
             writer.writerows(rows)
 
+        self._send_json({"file": file_path, field_name: value})
+
+    def _send_json(self, payload):
         self.send_response(200)
         self.send_header("Content-Type", "application/json")
         self.end_headers()
-        self.wfile.write(json.dumps({"file": file_path, field_name: value}).encode("utf-8"))
+        self.wfile.write(json.dumps(payload).encode("utf-8"))
 
 
 if __name__ == "__main__":

@@ -1,152 +1,150 @@
 # Bibliography Repository
 
-Lightweight, git-friendly bibliography tracker. PDFs stay in `PDFs/` (gitignored), while metadata and tools live in the repo.
+Local, git-friendly bibliography management.
 
-## Layout
+- PDFs are stored in `PDFs/` and are intentionally gitignored.
+- Metadata is stored as CSV in `METADATA/`.
+- All operations are done through `CODE/bib.py` and the lightweight viewer.
 
-- `PDFs/`: all PDFs live here.
-- `METADATA/metadata.csv`: extracted metadata + your additions.
-- `METADATA/collections.json`: saved filters (named lists of bib codes).
-- `CODE/bib.py`: scan, rename, and query.
-- `CONFIGS/config.json`: personal tag config for `my_keywords`.
-- `VIEWER/`: lightweight browser viewer.
+## Essential layout
 
-## Quick start
+- `CODE/bib.py`: CLI for scan, search, validation, cleanup, export.
+- `CODE/viewer_server.py`: local HTTP server for the viewer and toggle endpoints.
+- `VIEWER/viewer.html` + `VIEWER/viewer.js`: browser UI.
+- `METADATA/metadata.csv`: main bibliography table.
+- `METADATA/abstracts.csv`: abstracts sidecar keyed by `code`.
+- `scripts/verify.sh`: one-command integrity + tests.
+- `scripts/backup_metadata.sh`: timestamped backup of metadata files.
 
-1. Add PDFs to `PDFs/`.
-2. Run `python3 CODE/bib.py scan` for preliminary naming.
-3. Use Codex to read PDFs via `pdftotext` and complete metadata.
-4. Optionally run auto-tagging with your personal keywords (see below).
+## Dependencies
 
-## Metadata (single source of truth)
+- Required: `python3`
+- Optional but recommended: `pdftotext` (used for text extraction in `scan`, `tag`, and `abstracts --from-pdfs`)
+- Optional: `pdfinfo` (improves metadata inference during `scan`)
 
-`METADATA/metadata.csv` is the single source of truth for your bibliography. The scanner fills what it can from PDFs; you complete the rest.
+## How it is supposed to work
 
-### Fields
+1. Put PDFs in `PDFs/`.
+2. Run initial scan:
 
-- `code`: bibliography code, matches filename without extension.
-- `file`: relative path to the PDF.
-- `type`: article | preprint | thesis | poster | book | slides | proceedings (edit as needed).
-- `title`: paper title.
-- `journal`: journal or venue.
-- `year`: 4-digit year.
-- `doi`: DOI string.
-- `author`: author list.
-- `keywords`: keywords from the paper or your tags.
-- `my_keywords`: your project- or topic-specific tags.
-- `star`: set to `1` when starred in the viewer.
-- `unread`: set to `1` for papers you want to read later.
-- `added_at`: date added to the bibliography (YYYY-MM-DD).
-- `notes`: any extra notes (optional).
-
-### Tips
-
-- Fill `my_keywords` with project names to group related work.
-- Use consistent separators (comma or semicolon) in keyword fields.
-- If a file is renamed or moved by `CODE/bib.py`, its `code` and `file` are updated automatically.
-- Personal tags can be suggested from `CONFIGS/config.json` by running `python3 CODE/bib.py tag`.
-
-## Find papers
-
-List codes by filters:
-
-```
-python3 CODE/bib.py find --from-year 2022 --to-year 2025 --keyword muon
-```
-
-Filter and sort by bibliography addition date:
-
-```
-python3 CODE/bib.py find --added-from 2026-01-01 --added-to 2026-01-31 --sort-added desc
-```
-
-Save a named collection:
-
-```
-python3 CODE/bib.py save-collection --name "Recent muon detector development" --from-year 2022 --keyword muon
-```
-
-List saved collections:
-
-```
-python3 CODE/bib.py list-collections
-```
-
-## Updating
-
-Add new PDFs to `PDFs/` and rerun:
-
-```
+```bash
 python3 CODE/bib.py scan
 ```
 
-The script renames PDFs in place using:
+3. Edit `METADATA/metadata.csv` to complete or correct fields.
+4. Build/update abstracts sidecar:
 
-```
-YYYY_TYPE_NAME.pdf
-```
-
-`TYPE` is inferred (article, preprint, thesis, poster, book, slides, proceedings) and can be edited in `METADATA/metadata.csv`.
-
-## Personal keyword tagging
-
-Edit `CONFIGS/config.json` with your personal tags. Then run:
-
-```
-python3 CODE/bib.py tag
+```bash
+python3 CODE/bib.py abstracts
 ```
 
-Use `--force` to overwrite existing `my_keywords`.
+5. If you want extraction from PDF text:
 
-## Maintenance helpers
-
-Validate metadata fields and formats:
-
-```
-python3 CODE/bib.py validate
+```bash
+python3 CODE/bib.py abstracts --from-pdfs
 ```
 
-Summarize counts by year/type/tag:
+6. Validate repository state before committing:
 
-```
-python3 CODE/bib.py stats
-```
-
-Export filtered results to JSON or CSV:
-
-```
-python3 CODE/bib.py export --format json --output /tmp/bibliography.json --from-year 2020
+```bash
+scripts/verify.sh
 ```
 
-You can also use `--added-from`, `--added-to`, `--sort-added asc|desc`, and `--unread-only` with `find`, `save-collection`, and `export`.
+7. Open viewer:
 
-Backup metadata and collections:
-
-```
-scripts/backup_metadata.sh
-```
-
-## Lightweight GUI finder
-
-Serve the repo locally and open the viewer:
-
-```
+```bash
 python3 CODE/viewer_server.py
 ```
 
-Then visit `http://localhost:8000/VIEWER/viewer.html` and filter on year, journal, keywords, starred items, unread items, and `added_at` date range. You can also sort by added date.
+Then open: `http://localhost:8000/VIEWER/viewer.html`
 
-Use the **Save list** button to write a JSON file into `SAVED_LISTS/`.
-Click the star next to a title to toggle `star` in `METADATA/metadata.csv`.
-Use the read/unread button next to each title to toggle `unread` in `METADATA/metadata.csv`.
+## Data contracts
 
-## Desktop launcher
+### `METADATA/metadata.csv`
 
-The repo ships a launcher in `BIBLIOGRAPHY.desktop`. To register it:
+- Header order must match `CODE/bib.py` constant `FIELDS`.
+- `code` must be unique.
+- `file` points to a relative PDF path.
+- `code` and PDF stem must match exactly.
+- Naming convention is underscore-only (`_`); do not use `-` in generated codes or PDF names.
+- `year` must be `YYYY` when present.
+- `star` and `unread` are empty or `1`.
+- `added_at` is `YYYY-MM-DD` when present.
 
+### `METADATA/abstracts.csv`
+
+- Header is exactly:
+
+```csv
+code,abstract
 ```
+
+- `code` must reference an existing metadata row.
+- This file is independent from `metadata.csv` by design; `scan` does not modify it.
+- `bib.py abstracts` is the explicit maintenance command.
+
+## Core CLI commands
+
+```bash
+python3 CODE/bib.py scan
+python3 CODE/bib.py abstracts [--from-pdfs|--scan] [--force]
+python3 CODE/bib.py find --from-year 2022 --keyword detector
+python3 CODE/bib.py verify
+python3 CODE/bib.py validate
+```
+
+## Viewer behavior
+
+- Reads `metadata.csv` and `abstracts.csv`.
+- Supports filtering by title/journal/keywords/my keywords/abstract text/year/date/star/unread.
+- Star/unread toggles write back into `METADATA/metadata.csv`.
+- Abstract section is per-card expandable (`Show abstract` / `Hide abstract`).
+- Viewer saved lists are stored as JSON files in `SAVED_LISTS/`.
+
+Note: CLI collections (`save-collection`, `list-collections`) are separate and stored in `METADATA/collections.json`.
+
+## Maintenance scripts
+
+Run full checks:
+
+```bash
+scripts/verify.sh
+```
+
+This runs:
+
+1. `python3 CODE/bib.py verify`
+2. `python3 CODE/bib.py validate`
+3. `python3 -m unittest discover -s tests`
+
+Create timestamped metadata backups:
+
+```bash
+scripts/backup_metadata.sh
+```
+
+Backups are written to `METADATA/backups/`.
+
+## Keep the repository essential
+
+- Track only canonical metadata files (`metadata.csv`, `abstracts.csv`).
+- Use `METADATA/backups/` for backups; generated backup variants are ignored by `.gitignore`.
+- Prefer explicit commands (`scan`, `abstracts`, `verify`) over implicit side effects.
+
+## Optional commands
+
+These are available but not required for the core flow:
+
+- `python3 CODE/bib.py tag`
+- `python3 CODE/bib.py dedupe`
+- `python3 CODE/bib.py cleanup`
+- `python3 CODE/bib.py export`
+- `python3 CODE/bib.py save-collection`
+- `python3 CODE/bib.py list-collections`
+
+## Desktop launcher (optional)
+
+```bash
 cp /home/csoneira/WORK/BIBLIOGRAPHY/BIBLIOGRAPHY.desktop ~/.local/share/applications/
 chmod +x /home/csoneira/WORK/BIBLIOGRAPHY/LAUNCHER/launch_viewer.sh
 ```
-
-If you move the repo again, update `BIBLIOGRAPHY.desktop` to the new absolute paths and re-copy it.

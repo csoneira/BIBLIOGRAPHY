@@ -15,6 +15,7 @@ PDF_DIR = top / "PDFs"
 LIB_DIR = PDF_DIR
 METADATA_DIR = top / "METADATA"
 METADATA_FILE = METADATA_DIR / "metadata.csv"
+ABSTRACTS_FILE = METADATA_DIR / "abstracts.csv"
 COLLECTIONS_FILE = METADATA_DIR / "collections.json"
 CONFIG_FILE = top / "CONFIGS" / "config.json"
 
@@ -50,6 +51,7 @@ BAD_TITLE_RE = re.compile(
 )
 
 REQUIRED_FIELDS = ["code", "file", "type", "title", "year"]
+ABSTRACT_FIELDS = ["code", "abstract"]
 
 
 def load_config() -> dict:
@@ -149,11 +151,11 @@ def run_pdftotext_full(path: Path) -> str:
 
 def slugify(value: str, max_len: int = 60) -> str:
     value = value.strip().lower()
-    value = re.sub(r"[^a-z0-9]+", "-", value)
-    value = re.sub(r"-+", "-", value).strip("-")
+    value = re.sub(r"[^a-z0-9]+", "_", value)
+    value = re.sub(r"_+", "_", value).strip("_")
     if not value:
         return "untitled"
-    return value[:max_len].rstrip("-")
+    return value[:max_len].rstrip("_")
 
 
 def infer_year(filename: str, info: dict, text: str) -> str:
@@ -248,6 +250,127 @@ def save_metadata(rows: list) -> None:
         writer.writeheader()
         for row in rows:
             writer.writerow(row)
+
+
+def ensure_abstracts_file() -> None:
+    METADATA_DIR.mkdir(parents=True, exist_ok=True)
+    if ABSTRACTS_FILE.exists():
+        return
+    with ABSTRACTS_FILE.open("w", newline="") as handle:
+        writer = csv.DictWriter(handle, fieldnames=ABSTRACT_FIELDS)
+        writer.writeheader()
+
+
+def load_abstracts() -> dict:
+    if not ABSTRACTS_FILE.exists():
+        return {}
+    with ABSTRACTS_FILE.open("r", newline="") as handle:
+        reader = csv.DictReader(handle)
+        data = {}
+        for row in reader:
+            code = (row.get("code") or "").strip()
+            if not code:
+                continue
+            data[code] = row.get("abstract", "")
+        return data
+
+
+def save_abstracts(mapping: dict) -> None:
+    ensure_abstracts_file()
+    with ABSTRACTS_FILE.open("w", newline="") as handle:
+        writer = csv.DictWriter(handle, fieldnames=ABSTRACT_FIELDS)
+        writer.writeheader()
+        for raw_code in sorted(mapping.keys()):
+            code = (raw_code or "").strip()
+            if not code:
+                continue
+            writer.writerow(
+                {
+                    "code": code,
+                    "abstract": mapping.get(raw_code) or "",
+                }
+            )
+
+
+def collapse_whitespace(text: str) -> str:
+    return re.sub(r"\s+", " ", text or "").strip()
+
+
+def extract_first_text_block(text: str) -> str:
+    normalized = (text or "").replace("\r\n", "\n").replace("\r", "\n")
+    if not normalized.strip():
+        return ""
+
+    lines = [line.strip() for line in normalized.split("\n")]
+    for idx, line in enumerate(lines):
+        if not line.lower().startswith("abstract"):
+            continue
+        inline = re.sub(r"^abstract\b[:\s-]*", "", line, flags=re.IGNORECASE)
+        block_lines = [inline] if inline.strip() else []
+        for next_line in lines[idx + 1 :]:
+            stripped = next_line.strip()
+            if not stripped:
+                if block_lines:
+                    break
+                continue
+            # Short all-caps lines often mark next section titles.
+            if block_lines and stripped.isupper() and len(stripped.split()) <= 8:
+                break
+            block_lines.append(stripped)
+            if len(" ".join(block_lines)) > 4000:
+                break
+        candidate = collapse_whitespace(" ".join(block_lines))
+        if candidate:
+            return candidate
+
+    for block in re.split(r"\n\s*\n+", normalized):
+        candidate = collapse_whitespace(block)
+        if len(candidate) >= 40:
+            return candidate
+    return ""
+
+
+def guess_abstract_for_row(row: dict, from_pdfs: bool = False) -> str:
+    if from_pdfs:
+        path = top / (row.get("file") or "")
+        if path.exists():
+            text = run_pdftotext_full(path)
+            candidate = extract_first_text_block(text)
+            if candidate:
+                return candidate
+    return collapse_whitespace(row.get("notes", ""))
+
+
+def rebuild_abstracts(from_pdfs: bool = False, force: bool = False) -> int:
+    ensure_abstracts_file()
+    rows = load_rows()
+    existing = load_abstracts()
+    rebuilt = {}
+    updated = 0
+    preserved = 0
+
+    for row in rows:
+        code = (row.get("code") or "").strip()
+        if not code or code in rebuilt:
+            continue
+
+        current = existing.get(code, "")
+        if current and not force:
+            rebuilt[code] = current
+            preserved += 1
+            continue
+
+        guessed = guess_abstract_for_row(row, from_pdfs=from_pdfs)
+        rebuilt[code] = guessed
+        if guessed != current:
+            updated += 1
+
+    save_abstracts(rebuilt)
+    print(f"Abstract entries: {len(rebuilt)}")
+    print(f"Updated abstracts: {updated}")
+    if preserved:
+        print(f"Preserved existing abstracts: {preserved}")
+    return updated
 
 
 def scan_pdfs(dry_run: bool = False) -> list:
@@ -413,6 +536,13 @@ def load_rows() -> list:
         return list(csv.DictReader(handle))
 
 
+def read_csv_header(path: Path) -> list:
+    if not path.exists():
+        return []
+    with path.open("r", newline="") as handle:
+        return next(csv.reader(handle), [])
+
+
 def find_bad_titles(rows: list) -> list:
     bad = []
     for row in rows:
@@ -423,6 +553,16 @@ def find_bad_titles(rows: list) -> list:
 
 
 def verify_integrity() -> int:
+    issues = 0
+    if not METADATA_FILE.exists():
+        issues += 1
+        print(f"Missing metadata file: {METADATA_FILE.relative_to(top)}")
+
+    metadata_header = read_csv_header(METADATA_FILE)
+    if metadata_header and metadata_header != FIELDS:
+        issues += 1
+        print(f"Metadata header mismatch: expected {FIELDS}, got {metadata_header}")
+
     pdfs = sorted([str(p.relative_to(top)) for p in LIB_DIR.glob("*.pdf")])
     rows = load_rows()
     meta_files = [row.get("file", "") for row in rows if row.get("file")]
@@ -439,7 +579,6 @@ def verify_integrity() -> int:
 
     bad_titles = find_bad_titles(rows)
 
-    issues = 0
     if missing_in_meta:
         issues += 1
         print(f"Missing in metadata: {len(missing_in_meta)}")
@@ -460,6 +599,34 @@ def verify_integrity() -> int:
         print(f"Duplicate codes: {len(duplicate_codes)}")
         for code in duplicate_codes[:20]:
             print(f"  - {code}")
+
+    if not ABSTRACTS_FILE.exists():
+        issues += 1
+        print(f"Missing abstracts file: {ABSTRACTS_FILE.relative_to(top)}")
+    else:
+        header = read_csv_header(ABSTRACTS_FILE)
+        if header != ABSTRACT_FIELDS:
+            issues += 1
+            print(f"Abstracts header mismatch: expected {ABSTRACT_FIELDS}, got {header}")
+
+        with ABSTRACTS_FILE.open("r", newline="") as handle:
+            reader = csv.DictReader(handle)
+            unknown_codes = []
+            seen = set()
+            metadata_codes = set(code_counts.keys())
+            for row in reader:
+                code = (row.get("code") or "").strip()
+                if not code or code in seen:
+                    continue
+                seen.add(code)
+                if code not in metadata_codes:
+                    unknown_codes.append(code)
+
+            if unknown_codes:
+                issues += 1
+                print(f"Abstract codes not in metadata: {len(unknown_codes)}")
+                for code in unknown_codes[:20]:
+                    print(f"  - {code}")
 
     if issues == 0:
         print("Integrity check: OK")
@@ -910,6 +1077,19 @@ def main():
     tag.add_argument("--force", action="store_true", help="Overwrite existing my_keywords")
 
     verify = sub.add_parser("verify", help="Check metadata integrity")
+    abstracts = sub.add_parser("abstracts", help="Build or refresh abstracts metadata")
+    abstracts.add_argument(
+        "--from-pdfs",
+        "--scan",
+        dest="from_pdfs",
+        action="store_true",
+        help="Extract abstract text from PDFs via pdftotext",
+    )
+    abstracts.add_argument(
+        "--force",
+        action="store_true",
+        help="Regenerate all abstracts even when already present",
+    )
     cleanup = sub.add_parser("cleanup", help="Normalize titles in metadata")
     cleanup.add_argument("--rename", action="store_true", help="Rename files and codes to match")
     cleanup.add_argument("--dry-run", action="store_true", help="Preview changes without writing")
@@ -941,6 +1121,9 @@ def main():
 
     if args.command == "scan":
         scan_pdfs(dry_run=args.dry_run)
+        return
+    if args.command == "abstracts":
+        rebuild_abstracts(from_pdfs=args.from_pdfs, force=args.force)
         return
 
     rows = load_rows()

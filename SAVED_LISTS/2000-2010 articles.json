@@ -11,24 +11,24 @@
     "myKeyword": ""
   },
   "codes": [
-    "2000_article_muon-observations",
-    "2000_article_coronal-mass-ejections-and-forbush-decreases",
+    "2000_article_muon_observations",
+    "2000_article_coronal_mass_ejections_and_forbush_decreases",
     "2000_article_a-new-high-resolution-tof-technology",
-    "2001_article_the-day-night-variation-of-cosmic-rays-intensity",
+    "2001_article_the_day_night_variation_of_cosmic_rays_intensity",
     "2004_article_cosmic-ray-muon-observation-at-southern-space-observatory-sso-29s-53w",
     "2004_article_measurement-of-the-east-west-asymmetry-of-the-cosmic-muon-flux-in-hanoi",
     "2003_article_measurement-of-the-zenith-angle-distribution-of-the-cosmic-m",
     "2004_article_properties-and-performance-of-the-prototype-instrument-for-the-pierre-auger-observatory",
     "2005_article_a-large-area-muon-tracking-detector-for-ultra-high-energy-cosmic-ray-astrophysics-the-grapes-3-experiment",
     "2005_article_correlated-measurements-of-secondary-cosmic-ray-fluxes-by-the-aragats-space-environmental-center-monitors",
-    "2006_article_real-time-cosmic-ray-monitoring-system-for-space-weather",
+    "2006_article_real_time_cosmic_ray_monitoring_system_for_space_weather",
     "2006_article_the-charge-ratio-of-the-atmospheric-muons-at-low-energy",
-    "2007_article_investigations-of-a-thgem-based-imaging-detector",
+    "2007_article_investigations_of_a_thgem_based_imaging_detector",
     "2007_article_using-rpc-detectors-as-cosmic-rays-monitor",
-    "2009_article_status-performance-and-first-results-of-the-icetop-array",
+    "2009_article_status_performance_and_first_results_of_the_icetop_array",
     "2010_article_commissioning-of-the-atlas-muon-spectrometer-with-cosmic-rays",
     "2010_article_measurement-of-angular-distribution-of-cosmic-ray-muon-fluence-rate",
-    "2010_article_simulation-studies-and-implementation-of-linsley-s-eas-time",
+    "2010_article_simulation_studies_and_implementation_of_linsley_s_eas_time",
     "2010_article_experimental-tests-of-gravitational-theory-pdg"
   ]
 }

@@ -176,6 +176,30 @@
         font-size: 13px;
       }
 
+      .toggle-abstract {
+        margin-top: 10px;
+        background: #eef3f7;
+        color: var(--accent);
+        border: 1px solid #d6d6d6;
+      }
+
+      .toggle-abstract:disabled {
+        color: var(--muted);
+        background: #f2f2f2;
+        cursor: default;
+      }
+
+      .abstract {
+        margin-top: 10px;
+        padding: 10px 12px;
+        border-radius: 10px;
+        background: #f8fafc;
+        border: 1px solid #e2e6ea;
+        color: #2f3941;
+        line-height: 1.45;
+        white-space: pre-wrap;
+      }
+
       @keyframes fadeIn {
         from {
           opacity: 0;
@@ -239,6 +263,10 @@
         <div>
           <label for="myKeyword">My keywords contain</label>
           <input id="myKeyword" type="text" placeholder="project-x" />
+        </div>
+        <div>
+          <label for="abstractFilter">Abstract contains</label>
+          <input id="abstractFilter" type="text" placeholder="calibration, detector response" />
         </div>
         <div>
           <label for="addedFrom">Added from</label>

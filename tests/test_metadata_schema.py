@@ -27,12 +27,17 @@ class TestMetadataSchema(unittest.TestCase):
             header = next(reader, [])
         self.assertEqual(header, bib.FIELDS)
 
+        metadata_codes = set()
         doi_prefix = re.compile(r"^https?://(dx\.)?doi\.org/", re.IGNORECASE)
         doi_prefix_alt = re.compile(r"^doi:\s*", re.IGNORECASE)
 
         with metadata_path.open(newline="") as handle:
             rows = csv.DictReader(handle)
             for row in rows:
+                code = (row.get("code") or "").strip()
+                if code:
+                    metadata_codes.add(code)
+
                 year = (row.get("year") or "").strip()
                 if year:
                     self.assertRegex(year, r"^\d{4}$")
@@ -57,6 +62,21 @@ class TestMetadataSchema(unittest.TestCase):
                 added_at = (row.get("added_at") or "").strip()
                 if added_at:
                     self.assertRegex(added_at, r"^\d{4}-\d{2}-\d{2}$")
+
+        abstracts_path = repo_root / "METADATA" / "abstracts.csv"
+        self.assertTrue(abstracts_path.exists(), "abstracts.csv not found")
+
+        with abstracts_path.open(newline="") as handle:
+            reader = csv.reader(handle)
+            header = next(reader, [])
+        self.assertEqual(header, bib.ABSTRACT_FIELDS)
+
+        with abstracts_path.open(newline="") as handle:
+            rows = csv.DictReader(handle)
+            for row in rows:
+                code = (row.get("code") or "").strip()
+                self.assertTrue(code, "abstracts.csv has an empty code")
+                self.assertIn(code, metadata_codes)
 
 
 if __name__ == "__main__":

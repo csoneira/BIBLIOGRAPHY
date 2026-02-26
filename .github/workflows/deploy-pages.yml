@@ -1,0 +1,74 @@
+name: Deploy Viewer To GitHub Pages
+
+on:
+  push:
+    branches:
+      - main
+      - master
+    paths:
+      - VIEWER/**
+      - METADATA/metadata.csv
+      - METADATA/abstracts.csv
+      - .github/workflows/deploy-pages.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Pages
+        uses: actions/configure-pages@v5
+
+      - name: Build static site
+        run: |
+          rm -rf site
+          mkdir -p site
+          cp -R VIEWER site/VIEWER
+          mkdir -p site/METADATA
+          cp METADATA/metadata.csv site/METADATA/metadata.csv
+          if [ -f METADATA/abstracts.csv ]; then
+            cp METADATA/abstracts.csv site/METADATA/abstracts.csv
+          fi
+          cat > site/index.html <<'HTML'
+          <!doctype html>
+          <html lang="en">
+            <head>
+              <meta charset="utf-8" />
+              <meta http-equiv="refresh" content="0; url=./VIEWER/viewer.html" />
+              <meta name="viewport" content="width=device-width, initial-scale=1" />
+              <title>Bibliography Viewer</title>
+            </head>
+            <body>
+              <p>Redirecting to <a href="./VIEWER/viewer.html">viewer</a>...</p>
+            </body>
+          </html>
+          HTML
+          touch site/.nojekyll
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v4
+        with:
+          path: site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
