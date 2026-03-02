@@ -27,6 +27,9 @@ class TestMetadataSchema(unittest.TestCase):
             header = next(reader, [])
         self.assertEqual(header, bib.FIELDS)
 
+        pdf_dir = repo_root / "PDFs"
+        pdfs_available = pdf_dir.exists() and any(pdf_dir.glob("*.pdf"))
+
         metadata_codes = set()
         doi_prefix = re.compile(r"^https?://(dx\.)?doi\.org/", re.IGNORECASE)
         doi_prefix_alt = re.compile(r"^doi:\s*", re.IGNORECASE)
@@ -50,7 +53,8 @@ class TestMetadataSchema(unittest.TestCase):
                 if code:
                     pdf_rel = bib.code_to_rel_pdf_path(code)
                     self.assertTrue(pdf_rel.lower().endswith(".pdf"))
-                    self.assertTrue((repo_root / pdf_rel).exists())
+                    if pdfs_available:
+                        self.assertTrue((repo_root / pdf_rel).exists())
 
                 star = (row.get("star") or "").strip()
                 if star:
