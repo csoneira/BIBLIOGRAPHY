@@ -49,7 +49,6 @@ class TestBibScan(unittest.TestCase):
                 rows = list(csv.DictReader(handle))
             self.assertEqual(len(rows), 1)
             row = rows[0]
-            self.assertEqual(row["file"], f"PDFs/{pdfs[0].name}")
             self.assertEqual(row["code"], pdfs[0].stem)
             self.assertEqual(row["year"], "2020")
             self.assertEqual(row["type"], "article")

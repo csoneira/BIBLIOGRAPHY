@@ -14,3 +14,9 @@
 - [ ] Add tests for viewer server toggle endpoints (`/toggle-star`, `/toggle-unread`) so metadata write behavior is covered.
 - [ ] When loading a saved list in the viewer, optionally re-apply and show its stored filters (not only the stored codes).
 - [x] Add a simple `scripts/verify.sh` check to ensure metadata header order matches `bib.py` fields before committing.
+
+## Completed curation pass
+
+- [x] Remove `file` as a metadata column and use `code` as the single source of truth for `PDFs/{code}.pdf`.
+- [x] Rename mismatched PDFs/codes to underscore-only canonical slugs derived from curated titles.
+- [x] Rebuild `METADATA/abstracts.csv` after code renames and fill remaining empty abstracts.

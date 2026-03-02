@@ -149,10 +149,13 @@ class Handler(SimpleHTTPRequestHandler):
             self.send_error(400, "Invalid JSON")
             return
 
-        file_path = payload.get("file", "").strip()
+        code = (payload.get("code") or "").strip()
+        file_path = (payload.get("file") or "").strip()
+        if not code and file_path:
+            code = Path(file_path).stem
         value = payload.get(field_name, "")
-        if not file_path:
-            self.send_error(400, "Missing file")
+        if not code:
+            self.send_error(400, "Missing code")
             return
 
         metadata_path = ROOT / "METADATA" / "metadata.csv"
@@ -165,7 +168,7 @@ class Handler(SimpleHTTPRequestHandler):
             reader = csv.DictReader(handle)
             fieldnames = list(reader.fieldnames or [])
             for row in reader:
-                if row.get("file") == file_path:
+                if (row.get("code") or "").strip() == code:
                     row[field_name] = "1" if value == "1" else ""
                 rows.append(row)
 
@@ -177,7 +180,7 @@ class Handler(SimpleHTTPRequestHandler):
             writer.writeheader()
             writer.writerows(rows)
 
-        self._send_json({"file": file_path, field_name: value})
+        self._send_json({"code": code, field_name: value})
 
     def _send_json(self, payload):
         self.send_response(200)

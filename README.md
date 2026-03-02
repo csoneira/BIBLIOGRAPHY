@@ -1,150 +1,115 @@
 # Bibliography Repository
 
-Local, git-friendly bibliography management.
+Local, git-friendly bibliography management with one canonical identifier per paper.
 
-- PDFs are stored in `PDFs/` and are intentionally gitignored.
-- Metadata is stored as CSV in `METADATA/`.
-- All operations are done through `CODE/bib.py` and the lightweight viewer.
+## Canonical Model
 
-## Essential layout
-
-- `CODE/bib.py`: CLI for scan, search, validation, cleanup, export.
-- `CODE/viewer_server.py`: local HTTP server for the viewer and toggle endpoints.
-- `VIEWER/viewer.html` + `VIEWER/viewer.js`: browser UI.
-- `METADATA/metadata.csv`: main bibliography table.
-- `METADATA/abstracts.csv`: abstracts sidecar keyed by `code`.
-- `scripts/verify.sh`: one-command integrity + tests.
-- `scripts/backup_metadata.sh`: timestamped backup of metadata files.
-
-## Dependencies
-
-- Required: `python3`
-- Optional but recommended: `pdftotext` (used for text extraction in `scan`, `tag`, and `abstracts --from-pdfs`)
-- Optional: `pdfinfo` (improves metadata inference during `scan`)
-
-## How it is supposed to work
-
-1. Put PDFs in `PDFs/`.
-2. Run initial scan:
-
-```bash
-python3 CODE/bib.py scan
-```
-
-3. Edit `METADATA/metadata.csv` to complete or correct fields.
-4. Build/update abstracts sidecar:
-
-```bash
-python3 CODE/bib.py abstracts
-```
-
-5. If you want extraction from PDF text:
-
-```bash
-python3 CODE/bib.py abstracts --from-pdfs
-```
-
-6. Validate repository state before committing:
-
-```bash
-scripts/verify.sh
-```
-
-7. Open viewer:
-
-```bash
-python3 CODE/viewer_server.py
-```
-
-Then open: `http://localhost:8000/VIEWER/viewer.html`
-
-## Data contracts
-
-### `METADATA/metadata.csv`
-
-- Header order must match `CODE/bib.py` constant `FIELDS`.
-- `code` must be unique.
-- `file` points to a relative PDF path.
-- `code` and PDF stem must match exactly.
-- Naming convention is underscore-only (`_`); do not use `-` in generated codes or PDF names.
-- `year` must be `YYYY` when present.
-- `star` and `unread` are empty or `1`.
-- `added_at` is `YYYY-MM-DD` when present.
-
-### `METADATA/abstracts.csv`
-
-- Header is exactly:
+- `METADATA/metadata.csv` is the primary table.
+- `code` is the canonical ID.
+- PDF location is always derived, never stored: `PDFs/{code}.pdf`.
+- `metadata.csv` has no `file` column.
+- `code` and PDF filename stem must match exactly.
+- Codes/filenames are underscore-only slugs (`a_z_0_9_`), never `-`.
+- Abstracts live in sidecar `METADATA/abstracts.csv` with exactly:
 
 ```csv
 code,abstract
 ```
 
-- `code` must reference an existing metadata row.
-- This file is independent from `metadata.csv` by design; `scan` does not modify it.
-- `bib.py abstracts` is the explicit maintenance command.
+## Essential Files
 
-## Core CLI commands
+- `CODE/bib.py`: CLI (scan, cleanup, abstracts, verify, validate).
+- `CODE/viewer_server.py`: local server + metadata toggle endpoints.
+- `VIEWER/viewer.html`, `VIEWER/viewer.js`: browser UI.
+- `METADATA/metadata.csv`: curated bibliography metadata.
+- `METADATA/abstracts.csv`: curated abstracts.
+- `scripts/verify.sh`: full integrity gate.
+- `scripts/backup_metadata.sh`: timestamped metadata backups.
+
+## Minimal Workflow
+
+1. Add PDFs to `PDFs/`.
+2. Build initial metadata rows:
 
 ```bash
 python3 CODE/bib.py scan
-python3 CODE/bib.py abstracts [--from-pdfs|--scan] [--force]
-python3 CODE/bib.py find --from-year 2022 --keyword detector
-python3 CODE/bib.py verify
-python3 CODE/bib.py validate
 ```
 
-## Viewer behavior
+3. Curate titles/fields in `METADATA/metadata.csv`.
+4. Sync codes and filenames from curated titles:
 
-- Reads `metadata.csv` and `abstracts.csv`.
-- Supports filtering by title/journal/keywords/my keywords/abstract text/year/date/star/unread.
-- Star/unread toggles write back into `METADATA/metadata.csv`.
-- Abstract section is per-card expandable (`Show abstract` / `Hide abstract`).
-- Viewer saved lists are stored as JSON files in `SAVED_LISTS/`.
+```bash
+python3 CODE/bib.py cleanup --rename
+```
 
-Note: CLI collections (`save-collection`, `list-collections`) are separate and stored in `METADATA/collections.json`.
+5. Build/refresh abstracts:
 
-## Maintenance scripts
+```bash
+python3 CODE/bib.py abstracts
+```
 
-Run full checks:
+6. If you need extraction from PDF text:
+
+```bash
+python3 CODE/bib.py abstracts --from-pdfs
+```
+
+7. Validate before commit:
 
 ```bash
 scripts/verify.sh
 ```
 
-This runs:
-
-1. `python3 CODE/bib.py verify`
-2. `python3 CODE/bib.py validate`
-3. `python3 -m unittest discover -s tests`
-
-Create timestamped metadata backups:
+8. Open the viewer:
 
 ```bash
-scripts/backup_metadata.sh
+python3 CODE/viewer_server.py
 ```
 
-Backups are written to `METADATA/backups/`.
+Then open `http://localhost:8000/VIEWER/viewer.html`.
 
-## Keep the repository essential
+## Curation Commands
 
-- Track only canonical metadata files (`metadata.csv`, `abstracts.csv`).
-- Use `METADATA/backups/` for backups; generated backup variants are ignored by `.gitignore`.
-- Prefer explicit commands (`scan`, `abstracts`, `verify`) over implicit side effects.
+- Auto-refresh weak titles from first PDF page and then rename:
 
-## Optional commands
+```bash
+python3 CODE/bib.py cleanup --from-pdfs --rename
+```
 
-These are available but not required for the core flow:
+- Force title refresh even if current title looks valid:
 
-- `python3 CODE/bib.py tag`
+```bash
+python3 CODE/bib.py cleanup --from-pdfs --force-titles --rename
+```
+
+- Rebuild every abstract from PDFs:
+
+```bash
+python3 CODE/bib.py abstracts --from-pdfs --force
+```
+
+## Integrity Rules
+
+- `metadata.csv` header must match `CODE/bib.py` `FIELDS`.
+- `abstracts.csv` header must match `code,abstract`.
+- Every metadata code must map to an existing PDF.
+- Every abstract code must exist in metadata.
+- `year` is `YYYY` when present.
+- `added_at` is `YYYY-MM-DD` when present.
+- `star`/`unread` are empty or `1`.
+
+## Scripts
+
+- `scripts/verify.sh` runs:
+  - `python3 CODE/bib.py verify`
+  - `python3 CODE/bib.py validate`
+  - `python3 -m unittest discover -s tests`
+- `scripts/backup_metadata.sh` snapshots `metadata.csv`, `abstracts.csv`, and `collections.json` into `METADATA/backups/`.
+
+## Optional
+
+- `python3 CODE/bib.py find ...`
 - `python3 CODE/bib.py dedupe`
-- `python3 CODE/bib.py cleanup`
-- `python3 CODE/bib.py export`
-- `python3 CODE/bib.py save-collection`
+- `python3 CODE/bib.py export ...`
+- `python3 CODE/bib.py save-collection ...`
 - `python3 CODE/bib.py list-collections`
-
-## Desktop launcher (optional)
-
-```bash
-cp /home/csoneira/WORK/BIBLIOGRAPHY/BIBLIOGRAPHY.desktop ~/.local/share/applications/
-chmod +x /home/csoneira/WORK/BIBLIOGRAPHY/LAUNCHER/launch_viewer.sh
-```

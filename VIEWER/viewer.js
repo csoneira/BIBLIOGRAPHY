@@ -179,7 +179,7 @@ function renderResults(rows) {
     const title = document.createElement("h3");
     const link = document.createElement("a");
     link.textContent = row.title || row.code || "Untitled";
-    link.href = `../${row.file}`;
+    link.href = `../PDFs/${row.code}.pdf`;
     link.target = "_blank";
     link.rel = "noopener";
     title.appendChild(link);
@@ -194,7 +194,7 @@ function renderResults(rows) {
       event.stopPropagation();
       const next = row.star === "1" ? "" : "1";
       try {
-        await setStarOnServer(row.file, next);
+        await setStarOnServer(row.code, next);
         row.star = next;
         star.textContent = row.star === "1" ? "★" : "☆";
       } catch (err) {
@@ -210,7 +210,7 @@ function renderResults(rows) {
       event.stopPropagation();
       const next = row.unread === "1" ? "" : "1";
       try {
-        await setUnreadOnServer(row.file, next);
+        await setUnreadOnServer(row.code, next);
         row.unread = next;
         unread.textContent = row.unread === "1" ? "Unread" : "Read";
       } catch (err) {
@@ -281,11 +281,11 @@ function getFilters() {
   };
 }
 
-async function setStarOnServer(file, star) {
+async function setStarOnServer(code, star) {
   const response = await fetch("/toggle-star", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ file, star }),
+    body: JSON.stringify({ code, star }),
   });
   if (!response.ok) {
     throw new Error("Failed to save star.");
@@ -293,11 +293,11 @@ async function setStarOnServer(file, star) {
   return response.json();
 }
 
-async function setUnreadOnServer(file, unread) {
+async function setUnreadOnServer(code, unread) {
   const response = await fetch("/toggle-unread", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ file, unread }),
+    body: JSON.stringify({ code, unread }),
   });
   if (!response.ok) {
     throw new Error("Failed to save unread.");

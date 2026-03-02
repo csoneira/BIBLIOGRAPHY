@@ -47,9 +47,10 @@ class TestMetadataSchema(unittest.TestCase):
                     normalized = doi_prefix_alt.sub("", doi_prefix.sub("", doi))
                     self.assertTrue(bib.DOI_FULL_RE.match(normalized))
 
-                file_val = (row.get("file") or "").strip()
-                if file_val:
-                    self.assertTrue(file_val.lower().endswith(".pdf"))
+                if code:
+                    pdf_rel = bib.code_to_rel_pdf_path(code)
+                    self.assertTrue(pdf_rel.lower().endswith(".pdf"))
+                    self.assertTrue((repo_root / pdf_rel).exists())
 
                 star = (row.get("star") or "").strip()
                 if star:

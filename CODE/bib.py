@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 import argparse
 import csv
+import html
 import json
 import os
 import re
@@ -21,7 +22,6 @@ CONFIG_FILE = top / "CONFIGS" / "config.json"
 
 FIELDS = [
     "code",
-    "file",
     "type",
     "title",
     "journal",
@@ -49,9 +49,47 @@ BAD_TITLE_RE = re.compile(
     r"|\\.(?:pdf|dvi|tif|djvu|doc)$",
     re.IGNORECASE,
 )
+TITLE_NOISE_RE = re.compile(
+    r"\b(?:volume|vol\.?|number|issn|pii|afcrl|indd|confidential|submitted|draft version|research article)\b",
+    re.IGNORECASE,
+)
+TITLE_SECTION_RE = re.compile(
+    r"^(?:abstract|summary|keywords?|index terms?|introduction|references|acknowledg(?:e)?ments?)\b",
+    re.IGNORECASE,
+)
+TITLE_AFFILIATION_RE = re.compile(
+    r"\b(?:university|department|division|institute|laboratory|school|college|faculty|center|centre|campus|email)\b",
+    re.IGNORECASE,
+)
+TITLE_EXTRA_NOISE_RE = re.compile(
+    r"\b(?:submission|manuscript|file reference|proof|draft|confidential|not for distribution|temp|view|export|online citation)\b",
+    re.IGNORECASE,
+)
+ABSTRACT_SECTION_RE = re.compile(
+    r"^(?:keywords?|index terms?|key points?|introduction|1[.)]\s|i[.)]\s|references?)\b",
+    re.IGNORECASE,
+)
+ABSTRACT_NOISE_RE = re.compile(
+    r"\b(?:copyright|all rights reserved|creative commons|received|accepted|issn|doi:)\b",
+    re.IGNORECASE,
+)
 
-REQUIRED_FIELDS = ["code", "file", "type", "title", "year"]
+REQUIRED_FIELDS = ["code", "type", "title", "year"]
 ABSTRACT_FIELDS = ["code", "abstract"]
+
+
+def code_to_rel_pdf_path(code: str) -> str:
+    code = (code or "").strip()
+    if not code:
+        return ""
+    return f"PDFs/{code}.pdf"
+
+
+def row_pdf_path(row: dict) -> Path:
+    rel = code_to_rel_pdf_path(row.get("code", ""))
+    if not rel:
+        return top / "__missing__.pdf"
+    return top / rel
 
 
 def load_config() -> dict:
@@ -127,9 +165,10 @@ def run_pdftotext_first_page(path: Path) -> str:
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             text=True,
+            timeout=30,
         )
         return result.stdout
-    except (OSError, subprocess.CalledProcessError):
+    except (OSError, subprocess.CalledProcessError, subprocess.TimeoutExpired):
         return ""
 
 
@@ -143,9 +182,10 @@ def run_pdftotext_full(path: Path) -> str:
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             text=True,
+            timeout=25,
         )
         return result.stdout
-    except (OSError, subprocess.CalledProcessError):
+    except (OSError, subprocess.CalledProcessError, subprocess.TimeoutExpired):
         return ""
 
 
@@ -156,6 +196,186 @@ def slugify(value: str, max_len: int = 60) -> str:
     if not value:
         return "untitled"
     return value[:max_len].rstrip("_")
+
+
+def build_code(year: str, doc_type: str, title: str) -> str:
+    safe_year = (year or "").strip()
+    if not YEAR_RE.match(safe_year):
+        safe_year = "0000"
+    safe_type = slugify((doc_type or "").strip() or "article", max_len=20)
+    return f"{safe_year}_{safe_type}_{slugify(title or 'untitled')}"
+
+
+def score_title_candidate(text: str) -> int:
+    candidate = (text or "").strip()
+    if not candidate:
+        return -100
+
+    lower = candidate.lower()
+    words = candidate.split()
+    alnum = sum(1 for ch in candidate if ch.isalnum())
+    letters = sum(1 for ch in candidate if ch.isalpha())
+    digits = sum(1 for ch in candidate if ch.isdigit())
+
+    score = 0
+    if 4 <= len(words) <= 24:
+        score += 3
+    if 24 <= len(candidate) <= 180:
+        score += 3
+    if TITLE_NOISE_RE.search(lower):
+        score -= 6
+    if TITLE_SECTION_RE.search(lower):
+        score -= 6
+    if TITLE_EXTRA_NOISE_RE.search(lower):
+        score -= 6
+    if TITLE_AFFILIATION_RE.search(lower):
+        score -= 4
+    if BAD_TITLE_RE.search(lower):
+        score -= 6
+    if re.match(r"^\d{4}\b", lower):
+        score -= 4
+    if lower.startswith("article "):
+        score -= 4
+    if lower.count(",") >= 2:
+        score -= 2
+    if lower.count(",") >= 2 and digits:
+        score -= 6
+    if candidate.count(";") >= 2:
+        score -= 8
+    if len(re.findall(r"\b[A-Z]\.", candidate)) >= 2:
+        score -= 6
+    if re.search(r"[A-Za-z]\d", candidate):
+        score -= 4
+    alpha_words = [word for word in re.findall(r"[A-Za-z]+", candidate)]
+    if alpha_words:
+        upper_words = sum(1 for word in alpha_words if word.isupper())
+        if upper_words / len(alpha_words) > 0.75 and len(alpha_words) >= 4:
+            score -= 4
+    if re.search(r"\b(?:v\d+|version)\b", lower):
+        score -= 2
+    if re.search(r"\b(?:of|the|and|for|with|within|to|in|on|at|from|by|a|an)\b$", lower):
+        score -= 4
+    if "_" in candidate:
+        score -= 4
+    if candidate.endswith("."):
+        score -= 1
+    if alnum:
+        score -= 4 if digits / alnum > 0.24 else 0
+        score -= 3 if letters / alnum < 0.6 else 0
+    if candidate.isupper():
+        score -= 1
+    return score
+
+
+def is_low_quality_title(title: str) -> bool:
+    candidate = normalize_title_text(title or "")
+    if not candidate:
+        return True
+    return score_title_candidate(candidate) <= 0
+
+
+def needs_title_refresh(title: str) -> bool:
+    candidate = normalize_title_text(title or "")
+    if not candidate:
+        return True
+
+    lower = candidate.lower()
+    if BAD_TITLE_RE.search(lower):
+        return True
+    if TITLE_NOISE_RE.search(lower):
+        return True
+    if "_" in candidate:
+        return True
+    if re.search(r"\b(?:vol\.?|volume|number|issn|pii)\b", lower):
+        return True
+
+    words = candidate.split()
+    digits = sum(1 for ch in candidate if ch.isdigit())
+    alnum = sum(1 for ch in candidate if ch.isalnum())
+    if digits >= 6 and len(words) <= 14 and alnum and (digits / alnum) > 0.2:
+        return True
+    return False
+
+
+def split_text_blocks(text: str, max_blocks: int = 20) -> list:
+    normalized = (text or "").replace("\r\n", "\n").replace("\r", "\n")
+    blocks = []
+    current = []
+    for raw_line in normalized.split("\n"):
+        line = re.sub(r"\s+", " ", html.unescape(raw_line)).strip()
+        if line:
+            current.append(line)
+            continue
+        if current:
+            blocks.append(current)
+            if len(blocks) >= max_blocks:
+                break
+            current = []
+    if current and len(blocks) < max_blocks:
+        blocks.append(current)
+    return blocks
+
+
+def guess_title_from_first_page(text: str) -> str:
+    blocks = split_text_blocks(text, max_blocks=12)
+    candidates = []
+
+    for block in blocks:
+        if not block:
+            continue
+        if TITLE_SECTION_RE.match(block[0]):
+            break
+        for take in (1, 2, 3):
+            if len(block) < take:
+                continue
+            candidate = " ".join(block[:take]).strip()
+            if candidate:
+                candidates.append(candidate)
+
+    normalized = (text or "").replace("\r\n", "\n").replace("\r", "\n")
+    lines = []
+    for raw_line in normalized.split("\n"):
+        clean = re.sub(r"\s+", " ", html.unescape(raw_line)).strip()
+        if not clean:
+            continue
+        if TITLE_SECTION_RE.match(clean):
+            break
+        lines.append(clean)
+        if len(lines) >= 60:
+            break
+    for idx in range(min(len(lines), 25)):
+        candidates.append(lines[idx])
+        if idx + 1 < len(lines):
+            candidates.append(f"{lines[idx]} {lines[idx + 1]}")
+
+    best = ""
+    best_score = -100
+    seen = set()
+    for raw in candidates:
+        candidate = normalize_title_text(raw).strip(" .:;-|")
+        key = candidate.lower()
+        if not candidate or key in seen:
+            continue
+        seen.add(key)
+        score = score_title_candidate(candidate)
+        if score > best_score:
+            best = candidate
+            best_score = score
+
+    if best_score > 0:
+        return best
+    return ""
+
+
+def ensure_available_code(base_code: str, current_path: Path) -> tuple:
+    candidate = base_code
+    suffix = 2
+    while True:
+        path = LIB_DIR / f"{candidate}.pdf"
+        if (not path.exists()) or path.resolve() == current_path.resolve():
+            return candidate, path
+        candidate = f"{base_code}_{suffix}"
+        suffix += 1
 
 
 def infer_year(filename: str, info: dict, text: str) -> str:
@@ -206,17 +426,18 @@ def infer_type(filename: str, info: dict, title: str) -> str:
 
 
 def extract_title(info: dict, text: str, filename: str) -> str:
-    title = info.get("Title", "").strip()
-    if title:
-        return title
+    info_title = normalize_title_text(info.get("Title", "").strip())
+    guessed = normalize_title_text(guess_title_from_first_page(text))
 
-    # Heuristic: first non-empty line from first page
-    for line in text.splitlines():
-        line = line.strip()
-        if len(line) >= 8:
-            return line
-
-    return Path(filename).stem
+    if info_title and not needs_title_refresh(info_title):
+        return info_title
+    if guessed and not needs_title_refresh(guessed):
+        return guessed
+    if info_title:
+        return info_title
+    if guessed:
+        return guessed
+    return normalize_title_text(Path(filename).stem.replace("_", " "))
 
 
 def extract_author(info: dict) -> str:
@@ -238,7 +459,7 @@ def load_metadata() -> dict:
         reader = csv.DictReader(handle)
         data = {}
         for row in reader:
-            key = row.get("file", "")
+            key = (row.get("code") or "").strip()
             if key:
                 data[key] = row
         return data
@@ -296,14 +517,41 @@ def collapse_whitespace(text: str) -> str:
     return re.sub(r"\s+", " ", text or "").strip()
 
 
+def clean_abstract_text(text: str) -> str:
+    candidate = collapse_whitespace(html.unescape(text or ""))
+    if not candidate:
+        return ""
+    candidate = re.sub(
+        r"\b(?:copyright|all rights reserved)\b[^.]*\.?",
+        "",
+        candidate,
+        flags=re.IGNORECASE,
+    )
+    candidate = re.sub(r"\s+", " ", candidate).strip(" :;-")
+    return candidate
+
+
+def is_low_quality_abstract(text: str) -> bool:
+    candidate = clean_abstract_text(text)
+    if len(candidate) < 80:
+        return True
+    lower = candidate.lower()
+    if ABSTRACT_NOISE_RE.search(lower):
+        return True
+    if lower.startswith(("volume ", "issn ", "doi:", "journal ")):
+        return True
+    return False
+
+
 def extract_first_text_block(text: str) -> str:
     normalized = (text or "").replace("\r\n", "\n").replace("\r", "\n")
     if not normalized.strip():
         return ""
 
-    lines = [line.strip() for line in normalized.split("\n")]
+    lines = [collapse_whitespace(html.unescape(line.strip())) for line in normalized.split("\n")]
+    lines = [line for line in lines if line or line == ""]
     for idx, line in enumerate(lines):
-        if not line.lower().startswith("abstract"):
+        if not re.match(r"^abstract\b", line, flags=re.IGNORECASE):
             continue
         inline = re.sub(r"^abstract\b[:\s-]*", "", line, flags=re.IGNORECASE)
         block_lines = [inline] if inline.strip() else []
@@ -313,32 +561,47 @@ def extract_first_text_block(text: str) -> str:
                 if block_lines:
                     break
                 continue
-            # Short all-caps lines often mark next section titles.
+            if ABSTRACT_SECTION_RE.match(stripped):
+                break
+            if ABSTRACT_NOISE_RE.search(stripped):
+                continue
             if block_lines and stripped.isupper() and len(stripped.split()) <= 8:
                 break
             block_lines.append(stripped)
             if len(" ".join(block_lines)) > 4000:
                 break
-        candidate = collapse_whitespace(" ".join(block_lines))
-        if candidate:
+        candidate = clean_abstract_text(" ".join(block_lines))
+        lower = candidate.lower()
+        if candidate and not ABSTRACT_NOISE_RE.search(lower) and not lower.startswith(
+            ("volume ", "issn ", "doi:", "journal ")
+        ):
             return candidate
 
-    for block in re.split(r"\n\s*\n+", normalized):
-        candidate = collapse_whitespace(block)
-        if len(candidate) >= 40:
+    for block in split_text_blocks(normalized, max_blocks=40):
+        candidate = clean_abstract_text(" ".join(block))
+        if is_low_quality_abstract(candidate):
+            continue
+        if len(candidate) >= 80:
             return candidate
     return ""
 
 
 def guess_abstract_for_row(row: dict, from_pdfs: bool = False) -> str:
     if from_pdfs:
-        path = top / (row.get("file") or "")
+        path = row_pdf_path(row)
         if path.exists():
             text = run_pdftotext_full(path)
             candidate = extract_first_text_block(text)
             if candidate:
                 return candidate
-    return collapse_whitespace(row.get("notes", ""))
+    notes = clean_abstract_text(row.get("notes", ""))
+    if notes:
+        return notes
+    title = normalize_title_text(row.get("title", ""))
+    doc_type = (row.get("type") or "").strip().lower()
+    if title and doc_type in {"book", "thesis", "slides", "poster"}:
+        return f"{doc_type.capitalize()} focused on {title}."
+    return ""
 
 
 def rebuild_abstracts(from_pdfs: bool = False, force: bool = False) -> int:
@@ -379,9 +642,9 @@ def scan_pdfs(dry_run: bool = False) -> list:
     config = load_config()
     existing = load_metadata()
     rows = []
-    seen_files = set()
 
     for path in sorted(LIB_DIR.glob("*.pdf")):
+        old_code = path.stem
         info = run_pdfinfo(path)
         text = run_pdftotext_first_page(path)
         title = extract_title(info, text, path.name)
@@ -390,31 +653,22 @@ def scan_pdfs(dry_run: bool = False) -> list:
         author = extract_author(info)
         doi = extract_doi(text)
 
-        slug = slugify(title)
-        code = f"{year}_{doc_type}_{slug}"
-        new_name = f"{code}.pdf"
-        new_path = LIB_DIR / new_name
+        base_code = build_code(year, doc_type, title)
+        code, new_path = ensure_available_code(base_code, path)
 
         if not dry_run and (path.resolve() != new_path.resolve()):
-            if new_path.exists():
-                # Avoid collisions by appending a suffix.
-                ts = datetime.now(timezone.utc).strftime("%Y%m%d%H%M%S")
-                new_path = LIB_DIR / f"{code}-{ts}.pdf"
-                code = new_path.stem
             path.rename(new_path)
         else:
             new_path = path
 
-        rel_path = str(new_path.relative_to(top))
-        seen_files.add(rel_path)
+        code = new_path.stem
 
-        prev = existing.get(rel_path, {})
+        prev = existing.get(old_code, {})
         auto_tags = ""
         if not prev.get("my_keywords"):
             auto_tags = suggest_my_keywords(f"{title}\n{prev.get('keywords', '')}", config)
         row = {
-            "code": prev.get("code", code),
-            "file": rel_path,
+            "code": code,
             "type": prev.get("type", doc_type),
             "title": prev.get("title", title),
             "journal": prev.get("journal", ""),
@@ -547,7 +801,7 @@ def find_bad_titles(rows: list) -> list:
     bad = []
     for row in rows:
         title = (row.get("title") or "").strip()
-        if not title or BAD_TITLE_RE.search(title):
+        if needs_title_refresh(title):
             bad.append(row)
     return bad
 
@@ -565,7 +819,7 @@ def verify_integrity() -> int:
 
     pdfs = sorted([str(p.relative_to(top)) for p in LIB_DIR.glob("*.pdf")])
     rows = load_rows()
-    meta_files = [row.get("file", "") for row in rows if row.get("file")]
+    meta_files = [code_to_rel_pdf_path(row.get("code", "")) for row in rows if row.get("code")]
     missing_in_meta = [p for p in pdfs if p not in meta_files]
     missing_pdfs = [f for f in meta_files if f.endswith(".pdf") and not (top / f).exists()]
 
@@ -593,7 +847,7 @@ def verify_integrity() -> int:
         issues += 1
         print(f"Bad titles: {len(bad_titles)}")
         for row in bad_titles[:20]:
-            print(f"  - {row.get('title', '')} :: {row.get('file', '')}")
+            print(f"  - {row.get('title', '')} :: {row.get('code', '')}")
     if duplicate_codes:
         issues += 1
         print(f"Duplicate codes: {len(duplicate_codes)}")
@@ -660,43 +914,73 @@ def normalize_title_text(title: str) -> str:
     return title.strip(" -")
 
 
-def cleanup_titles(rename_files: bool = False, dry_run: bool = False) -> int:
+def cleanup_titles(
+    rename_files: bool = False,
+    dry_run: bool = False,
+    from_pdfs: bool = False,
+    force_titles: bool = False,
+) -> int:
     rows = load_rows()
     updated = 0
+    refreshed_from_pdf = 0
+    code_updates = 0
     renames = []
     for row in rows:
-        title = row.get("title", "")
-        normalized = normalize_title_text(title)
-        if not normalized or normalized == title:
-            continue
-        row["title"] = normalized
-        updated += 1
+        original_title = row.get("title", "")
+        normalized = normalize_title_text(original_title)
+
+        if from_pdfs and (force_titles or needs_title_refresh(normalized)):
+            path = row_pdf_path(row)
+            if path.exists():
+                info = run_pdfinfo(path)
+                text = run_pdftotext_first_page(path)
+                extracted = normalize_title_text(extract_title(info, text, path.name))
+                current_score = score_title_candidate(normalized)
+                extracted_score = score_title_candidate(extracted)
+                if extracted and (
+                    (force_titles and extracted_score > 0)
+                    or (
+                        extracted_score > current_score
+                        and extracted_score > 0
+                        and not needs_title_refresh(extracted)
+                    )
+                ):
+                    normalized = extracted
+                    refreshed_from_pdf += 1
+
+        if normalized and normalized != original_title:
+            row["title"] = normalized
+            updated += 1
 
         if not rename_files:
             continue
-        year = row.get("year", "0000")
-        doc_type = row.get("type", "article")
-        slug = slugify(normalized)
-        code = f"{year}_{doc_type}_{slug}"
-        new_name = f"{code}.pdf"
-        old_path = top / row.get("file", "")
-        new_path = LIB_DIR / new_name
+
+        current_code = (row.get("code") or "").strip()
+        year = (row.get("year") or "").strip() or "0000"
+        doc_type = (row.get("type") or "").strip() or "article"
+        title_for_code = row.get("title") or current_code or "untitled"
+        base_code = build_code(year, doc_type, title_for_code)
+
+        old_path = row_pdf_path(row)
+        code, new_path = ensure_available_code(base_code, old_path)
         if old_path.exists() and old_path.resolve() != new_path.resolve():
-            if new_path.exists():
-                ts = datetime.now(timezone.utc).strftime("%Y%m%d%H%M%S")
-                new_path = LIB_DIR / f"{code}-{ts}.pdf"
-                code = new_path.stem
             if not dry_run:
                 old_path.rename(new_path)
-            row["file"] = str(new_path.relative_to(top))
-            row["code"] = code
-            renames.append((str(old_path.relative_to(top)), row["file"]))
+            renames.append((str(old_path.relative_to(top)), str(new_path.relative_to(top))))
 
-    if updated and not dry_run:
+        if code != current_code:
+            row["code"] = code
+            code_updates += 1
+
+    if (updated or code_updates or renames) and not dry_run:
         save_metadata(rows)
 
     if updated:
         print(f"Normalized titles: {updated}")
+    if refreshed_from_pdf:
+        print(f"Retitled from PDFs: {refreshed_from_pdf}")
+    if code_updates:
+        print(f"Updated codes: {code_updates}")
     if renames:
         print(f"Renamed files: {len(renames)}")
         for old, new in renames[:20]:
@@ -726,7 +1010,7 @@ def dedupe_metadata() -> int:
         for doi, items in list(dup_doi.items())[:20]:
             print(f"  - {doi}")
             for row in items[:5]:
-                print(f"      {row.get('code', '')} :: {row.get('file', '')}")
+                print(f"      {row.get('code', '')}")
 
     if dup_title:
         duplicates += len(dup_title)
@@ -734,7 +1018,7 @@ def dedupe_metadata() -> int:
         for title, items in list(dup_title.items())[:20]:
             print(f"  - {title}")
             for row in items[:5]:
-                print(f"      {row.get('code', '')} :: {row.get('file', '')}")
+                print(f"      {row.get('code', '')}")
 
     if duplicates == 0:
         print("Dedupe check: OK")
@@ -770,8 +1054,9 @@ def validate_metadata(rows: list) -> int:
         if added_at and parse_ymd_date(added_at) is None:
             bad_added_dates.append((row, added_at))
 
-        file_rel = (row.get("file") or "").strip()
-        if file_rel and file_rel.endswith(".pdf") and not (top / file_rel).exists():
+        code = (row.get("code") or "").strip()
+        file_rel = code_to_rel_pdf_path(code)
+        if code and not (top / file_rel).exists():
             missing_files.append((row, file_rel))
 
     issues = 0
@@ -779,27 +1064,27 @@ def validate_metadata(rows: list) -> int:
         issues += 1
         print(f"Missing required fields: {len(missing_required)}")
         for row, fields in missing_required[:20]:
-            print(f"  - {row.get('file', '')} :: {', '.join(fields)}")
+            print(f"  - {row.get('code', '')} :: {', '.join(fields)}")
     if bad_years:
         issues += 1
         print(f"Bad year format: {len(bad_years)}")
         for row, year in bad_years[:20]:
-            print(f"  - {row.get('file', '')} :: {year}")
+            print(f"  - {row.get('code', '')} :: {year}")
     if bad_dois:
         issues += 1
         print(f"Bad DOI format: {len(bad_dois)}")
         for row, doi in bad_dois[:20]:
-            print(f"  - {row.get('file', '')} :: {doi}")
+            print(f"  - {row.get('code', '')} :: {doi}")
     if bad_unread:
         issues += 1
         print(f"Bad unread format: {len(bad_unread)}")
         for row, unread in bad_unread[:20]:
-            print(f"  - {row.get('file', '')} :: {unread}")
+            print(f"  - {row.get('code', '')} :: {unread}")
     if bad_added_dates:
         issues += 1
         print(f"Bad added_at format: {len(bad_added_dates)}")
         for row, added_at in bad_added_dates[:20]:
-            print(f"  - {row.get('file', '')} :: {added_at}")
+            print(f"  - {row.get('code', '')} :: {added_at}")
     if missing_files:
         issues += 1
         print(f"Missing PDF files: {len(missing_files)}")
@@ -1092,6 +1377,16 @@ def main():
     )
     cleanup = sub.add_parser("cleanup", help="Normalize titles in metadata")
     cleanup.add_argument("--rename", action="store_true", help="Rename files and codes to match")
+    cleanup.add_argument(
+        "--from-pdfs",
+        action="store_true",
+        help="Refresh weak titles from first-page PDF text",
+    )
+    cleanup.add_argument(
+        "--force-titles",
+        action="store_true",
+        help="Refresh titles from PDFs even if current title looks valid",
+    )
     cleanup.add_argument("--dry-run", action="store_true", help="Preview changes without writing")
 
     dedupe = sub.add_parser("dedupe", help="Report duplicate titles or DOIs")
@@ -1200,7 +1495,7 @@ def main():
         for row in rows:
             if row.get("my_keywords") and not args.force:
                 continue
-            path = top / row.get("file", "")
+            path = row_pdf_path(row)
             if not path.exists():
                 continue
             text = run_pdftotext_full(path)
@@ -1222,7 +1517,12 @@ def main():
         return
 
     if args.command == "cleanup":
-        cleanup_titles(rename_files=args.rename, dry_run=args.dry_run)
+        cleanup_titles(
+            rename_files=args.rename,
+            dry_run=args.dry_run,
+            from_pdfs=args.from_pdfs,
+            force_titles=args.force_titles,
+        )
         return
 
     if args.command == "dedupe":

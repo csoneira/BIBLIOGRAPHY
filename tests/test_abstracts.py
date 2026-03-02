@@ -75,10 +75,9 @@ class TestAbstracts(unittest.TestCase):
                 bib.METADATA_FILE,
                 bib.FIELDS,
                 [
-                    {"code": "alpha", "file": "PDFs/alpha.pdf", "title": "Alpha title", "year": "2025"},
+                    {"code": "alpha", "title": "Alpha title", "year": "2025"},
                     {
                         "code": "beta",
-                        "file": "PDFs/beta.pdf",
                         "title": "Beta title",
                         "year": "2024",
                         "notes": "Beta abstract from notes.",
@@ -124,7 +123,6 @@ class TestAbstracts(unittest.TestCase):
                 [
                     {
                         "code": "alpha",
-                        "file": "PDFs/alpha.pdf",
                         "title": "Alpha title",
                         "year": "2025",
                         "notes": "Old note abstract.",
@@ -167,7 +165,6 @@ class TestAbstracts(unittest.TestCase):
                 [
                     {
                         "code": "alpha",
-                        "file": "PDFs/alpha.pdf",
                         "title": "Alpha title",
                         "year": "2025",
                     }
@@ -188,7 +185,7 @@ class TestAbstracts(unittest.TestCase):
             self.assertGreaterEqual(issues, 1)
             self.assertIn("Abstracts header mismatch", output.getvalue())
 
-            bib.METADATA_FILE.write_text("bad_header,file\nalpha,PDFs/alpha.pdf\n")
+            bib.METADATA_FILE.write_text("bad_header,title\nalpha,Alpha title\n")
             output = io.StringIO()
             with redirect_stdout(output):
                 issues = bib.verify_integrity()
