@@ -45,6 +45,12 @@ function parseCsv(text) {
   return rows;
 }
 
+window.addEventListener("pageshow", (event) => {
+  if (event.persisted) {
+    window.location.reload();
+  }
+});
+
 function toRows(csvText) {
   const parsed = parseCsv(csvText);
   if (parsed.length === 0) {
@@ -149,6 +155,60 @@ function sortByAddedDate(rows, direction) {
   return withDate.concat(withoutDate);
 }
 
+function parsePublicationYear(value) {
+  const text = (value || "").trim();
+  if (!/^\d{4}$/.test(text)) {
+    return null;
+  }
+  return parseInt(text, 10);
+}
+
+function sortByPublicationDate(rows, direction) {
+  if (!direction) {
+    return rows;
+  }
+
+  const withYear = [];
+  const withoutYear = [];
+  rows.forEach((row) => {
+    if (parsePublicationYear(row.year) === null) {
+      withoutYear.push(row);
+    } else {
+      withYear.push(row);
+    }
+  });
+
+  withYear.sort((a, b) => parsePublicationYear(a.year) - parsePublicationYear(b.year));
+  if (direction === "desc") {
+    withYear.reverse();
+  }
+  return withYear.concat(withoutYear);
+}
+
+function sortRows(rows, sortMode) {
+  if (!sortMode) {
+    return rows;
+  }
+
+  // Backward compatibility for older saved lists that stored only asc/desc.
+  if (sortMode === "asc" || sortMode === "desc") {
+    return sortByAddedDate(rows, sortMode);
+  }
+  if (sortMode === "added_asc") {
+    return sortByAddedDate(rows, "asc");
+  }
+  if (sortMode === "added_desc") {
+    return sortByAddedDate(rows, "desc");
+  }
+  if (sortMode === "publication_asc") {
+    return sortByPublicationDate(rows, "asc");
+  }
+  if (sortMode === "publication_desc") {
+    return sortByPublicationDate(rows, "desc");
+  }
+  return rows;
+}
+
 function applySavedList(rows, savedList) {
   const codes = new Set((savedList.codes || []).filter(Boolean));
   if (!codes.size) {
@@ -182,6 +242,18 @@ function renderResults(rows) {
     link.href = `../PDFs/${row.code}.pdf`;
     link.target = "_blank";
     link.rel = "noopener";
+    link.addEventListener("click", async (event) => {
+      // Keep modified clicks working normally for open-in-new-tab behavior.
+      if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) {
+        return;
+      }
+      event.preventDefault();
+      try {
+        await openPdfOnServer(row.code);
+      } catch (err) {
+        window.open(link.href, "_blank", "noopener");
+      }
+    });
     title.appendChild(link);
     header.appendChild(title);
 
@@ -259,6 +331,78 @@ function renderResults(rows) {
     card.appendChild(abstractToggle);
     card.appendChild(abstract);
 
+    const notesToggle = document.createElement("button");
+    notesToggle.className = "toggle-notes";
+
+    const notesSection = document.createElement("div");
+    notesSection.className = "notes-section";
+    notesSection.style.display = "none";
+
+    const notesLabel = document.createElement("div");
+    notesLabel.className = "notes-label";
+    notesLabel.textContent = "Notes";
+
+    const notesInput = document.createElement("textarea");
+    notesInput.className = "notes-editor";
+    notesInput.placeholder = "Write notes for this paper...";
+    notesInput.value = row.notes || "";
+
+    const notesControls = document.createElement("div");
+    notesControls.className = "notes-controls";
+
+    const notesSave = document.createElement("button");
+    notesSave.className = "notes-save";
+    notesSave.textContent = "Save notes";
+
+    const notesStatus = document.createElement("span");
+    notesStatus.className = "notes-status";
+
+    const updateNotesToggleText = () => {
+      const hidden = notesSection.style.display === "none";
+      if (!hidden) {
+        notesToggle.textContent = "Hide notes";
+        return;
+      }
+      notesToggle.textContent = notesInput.value.trim() ? "Show notes" : "Add notes";
+    };
+
+    notesToggle.addEventListener("click", () => {
+      const hidden = notesSection.style.display === "none";
+      notesSection.style.display = hidden ? "" : "none";
+      updateNotesToggleText();
+    });
+
+    notesInput.addEventListener("input", () => {
+      notesStatus.textContent = "Unsaved changes";
+    });
+
+    notesSave.addEventListener("click", async () => {
+      const nextNotes = notesInput.value;
+      notesSave.disabled = true;
+      notesSave.textContent = "Saving...";
+      try {
+        await saveNotesOnServer(row.code, nextNotes);
+        row.notes = nextNotes;
+        notesStatus.textContent = "Saved";
+        updateNotesToggleText();
+      } catch (err) {
+        notesStatus.textContent = "Save failed";
+        alert("Failed to save notes. Start the viewer server with: python3 CODE/viewer_server.py");
+      } finally {
+        notesSave.disabled = false;
+        notesSave.textContent = "Save notes";
+      }
+    });
+
+    notesControls.appendChild(notesSave);
+    notesControls.appendChild(notesStatus);
+    notesSection.appendChild(notesLabel);
+    notesSection.appendChild(notesInput);
+    notesSection.appendChild(notesControls);
+    updateNotesToggleText();
+    card.appendChild(notesToggle);
+    card.appendChild(notesSection);
+
     container.appendChild(card);
   });
 }
@@ -305,6 +449,32 @@ async function setUnreadOnServer(code, unread) {
   return response.json();
 }
 
+async function openPdfOnServer(code) {
+  const response = await fetch("/open-pdf", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ code }),
+    cache: "no-store",
+  });
+  if (!response.ok) {
+    throw new Error("Failed to open local PDF.");
+  }
+  return response.json();
+}
+
+async function saveNotesOnServer(code, notes) {
+  const response = await fetch("/save-notes", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ code, notes }),
+    cache: "no-store",
+  });
+  if (!response.ok) {
+    throw new Error("Failed to save notes.");
+  }
+  return response.json();
+}
+
 async function saveListToServer(name, rows, filters) {
   const payload = {
     name,
@@ -322,8 +492,15 @@ async function saveListToServer(name, rows, filters) {
   return response.json();
 }
 
+function freshUrl(url) {
+  const joiner = url.includes("?") ? "&" : "?";
+  return `${url}${joiner}t=${Date.now()}`;
+}
+
 async function loadData() {
-  const metadataResponse = await fetch("../METADATA/metadata.csv");
+  const metadataResponse = await fetch(freshUrl("../METADATA/metadata.csv"), {
+    cache: "no-store",
+  });
   if (!metadataResponse.ok) {
     throw new Error("metadata.csv not found. Run python3 CODE/bib.py scan.");
   }
@@ -338,7 +515,7 @@ async function loadData() {
 
 async function loadAbstractsMap() {
   try {
-    const response = await fetch("/abstracts");
+    const response = await fetch(freshUrl("/abstracts"), { cache: "no-store" });
     if (response.ok) {
       const payload = await response.json();
       if (payload && typeof payload === "object") {
@@ -353,7 +530,9 @@ async function loadAbstractsMap() {
   }
 
   try {
-    const response = await fetch("../METADATA/abstracts.csv");
+    const response = await fetch(freshUrl("../METADATA/abstracts.csv"), {
+      cache: "no-store",
+    });
     if (!response.ok) {
       return {};
     }
@@ -373,7 +552,7 @@ async function loadSavedLists() {
   select.appendChild(defaultOption);
 
   try {
-    const response = await fetch("/saved-lists");
+    const response = await fetch(freshUrl("/saved-lists"), { cache: "no-store" });
     if (!response.ok) {
       throw new Error("Saved lists not available.");
     }
@@ -402,7 +581,7 @@ async function init() {
 
     document.getElementById("applyBtn").addEventListener("click", () => {
       const filters = getFilters();
-      filteredRows = sortByAddedDate(applyFilters(rows, filters), filters.addedSort);
+      filteredRows = sortRows(applyFilters(rows, filters), filters.addedSort);
       renderResults(filteredRows);
     });
 

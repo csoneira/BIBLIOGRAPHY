@@ -1,8 +1,8 @@
 [Desktop Entry]
 Type=Application
-Name=Bibliography Finder
-Comment=Open the local bibliography viewer
+Name=Bibliography Workbench
+Comment=Search, filter, and annotate metadata, then open local PDFs directly.
 Exec=/home/csoneira/WORK/BIBLIOGRAPHY/LAUNCHER/launch_viewer.sh
-Icon=/home/csoneira/WORK/BIBLIOGRAPHY/LAUNCHER/icon.jpg
+Icon=/home/csoneira/WORK/BIBLIOGRAPHY/LAUNCHER/icon.png
 Terminal=false
-Categories=Office;Education;
+Categories=Education;

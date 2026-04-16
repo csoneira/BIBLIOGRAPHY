@@ -6,12 +6,14 @@
 - [x] In `VIEWER/viewer.js`, add a per-card `Show abstract` / `Hide abstract` expandable section.
 - [x] Add optional abstract text filter in the viewer (simple contains search), using the separate abstracts data source.
 - [x] Include `METADATA/abstracts.csv` in `scripts/backup_metadata.sh` and in integrity checks/tests.
+- [x] Add per-paper notes editor in the viewer and persist notes to `METADATA/metadata.csv` through `/save-notes`.
+- [x] Add local PDF open route (`/open-pdf`) and wire title clicks to open the original file via `evince`/`xdg-open`.
 
 ## General repo improvements
 
 - [ ] Add a small `scripts/restart_viewer.sh` (or `scripts/viewer_status.sh`) to stop stale `viewer_server.py` processes and start a fresh one cleanly.
 - [ ] Add `python3 CODE/bib.py migrate-metadata` to safely add new columns (like `unread`) without manual CSV edits.
-- [ ] Add tests for viewer server toggle endpoints (`/toggle-star`, `/toggle-unread`) so metadata write behavior is covered.
+- [ ] Add tests for viewer server write/open endpoints (`/toggle-star`, `/toggle-unread`, `/save-notes`, `/open-pdf`) so metadata write behavior and route guards are covered.
 - [ ] When loading a saved list in the viewer, optionally re-apply and show its stored filters (not only the stored codes).
 - [x] Add a simple `scripts/verify.sh` check to ensure metadata header order matches `bib.py` fields before committing.
 

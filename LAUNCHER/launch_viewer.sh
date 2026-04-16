@@ -3,7 +3,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 ROOT="$(cd -- "$SCRIPT_DIR/.." && pwd)"
-URL="http://localhost:8000/VIEWER/viewer.html"
+URL="http://localhost:8000/VIEWER/viewer.html?open_ts=$(date +%s)"
 
 cd "$ROOT"
 

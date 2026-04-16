@@ -18,8 +18,8 @@ code,abstract
 
 ## Essential Files
 
-- `CODE/bib.py`: CLI (scan, cleanup, abstracts, verify, validate).
-- `CODE/viewer_server.py`: local server + metadata toggle endpoints.
+- `CODE/bib.py`: CLI for scan/cleanup/abstracts plus find/export/collections, tagging, BibTeX import, and integrity checks.
+- `CODE/viewer_server.py`: local server + JSON endpoints (`/saved-lists`, `/abstracts`, `/abstract`, `/toggle-star`, `/toggle-unread`, `/save-notes`, `/open-pdf`, `/save-list`).
 - `VIEWER/viewer.html`, `VIEWER/viewer.js`: browser UI.
 - `METADATA/metadata.csv`: curated bibliography metadata.
 - `METADATA/abstracts.csv`: curated abstracts.
@@ -60,13 +60,30 @@ python3 CODE/bib.py abstracts --from-pdfs
 scripts/verify.sh
 ```
 
-8. Open the viewer:
+8. Open the viewer server:
 
 ```bash
 python3 CODE/viewer_server.py
 ```
 
+Or launch from the desktop helper:
+
+```bash
+LAUNCHER/launch_viewer.sh
+```
+
 Then open `http://localhost:8000/VIEWER/viewer.html`.
+
+## Viewer Features (Current)
+
+- Filters on year range, type, title, journal, keywords, my_keywords, abstract text, and added_at date range.
+- Sorting by `added_at` or publication date (`year`), ascending or descending.
+- `star` and `unread` toggles persisted to `METADATA/metadata.csv`.
+- Per-paper notes editor persisted to `METADATA/metadata.csv` (`notes` column).
+- Save/load list support via `SAVED_LISTS/*.json`.
+- Title click behavior:
+  - Normal left-click opens the local `PDFs/{code}.pdf` file with `evince` (fallback `xdg-open`) through server endpoint `/open-pdf`.
+  - Modified clicks (Ctrl/Cmd/Shift/Alt/middle-click) keep normal browser link behavior.
 
 ## Curation Commands
 
@@ -97,6 +114,7 @@ python3 CODE/bib.py abstracts --from-pdfs --force
 - `year` is `YYYY` when present.
 - `added_at` is `YYYY-MM-DD` when present.
 - `star`/`unread` are empty or `1`.
+- `notes` is optional free text.
 
 ## Scripts
 
@@ -109,7 +127,10 @@ python3 CODE/bib.py abstracts --from-pdfs --force
 ## Optional
 
 - `python3 CODE/bib.py find ...`
-- `python3 CODE/bib.py dedupe`
-- `python3 CODE/bib.py export ...`
 - `python3 CODE/bib.py save-collection ...`
 - `python3 CODE/bib.py list-collections`
+- `python3 CODE/bib.py export ...`
+- `python3 CODE/bib.py tag [--force]`
+- `python3 CODE/bib.py import-bibtex PATH [--force]`
+- `python3 CODE/bib.py stats`
+- `python3 CODE/bib.py dedupe`

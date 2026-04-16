@@ -2,6 +2,8 @@
 import csv
 import json
 import os
+import shutil
+import subprocess
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
@@ -37,9 +39,42 @@ def load_abstracts_map() -> dict:
 
 
 class Handler(SimpleHTTPRequestHandler):
+    def _disable_cache_for_request(self) -> bool:
+        parsed = urlparse(self.path)
+        path = parsed.path
+        return (
+            path.startswith("/VIEWER/")
+            or path == "/METADATA/metadata.csv"
+            or path == "/METADATA/abstracts.csv"
+            or path in {
+                "/saved-lists",
+                "/abstracts",
+                "/abstract",
+                "/save-list",
+                "/save-notes",
+                "/toggle-star",
+                "/toggle-unread",
+                "/open-pdf",
+            }
+        )
+
+    def _is_pdf_request(self) -> bool:
+        path = urlparse(self.path).path
+        return path.startswith("/PDFs/") and path.lower().endswith(".pdf")
+
+    def end_headers(self):
+        if self._is_pdf_request():
+            # Hint browsers to render PDFs inline instead of downloading by default.
+            self.send_header("Content-Disposition", "inline")
+        if self._disable_cache_for_request():
+            self.send_header("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0")
+            self.send_header("Pragma", "no-cache")
+            self.send_header("Expires", "0")
+        super().end_headers()
+
     def translate_path(self, path):
         # Serve files from repo root.
-        rel = path.lstrip("/")
+        rel = urlparse(path).path.lstrip("/")
         return str(ROOT / rel)
 
     def do_GET(self):
@@ -56,12 +91,21 @@ class Handler(SimpleHTTPRequestHandler):
         super().do_GET()
 
     def do_POST(self):
-        if self.path != "/save-list":
-            if self.path == "/toggle-star":
+        parsed = urlparse(self.path)
+        path = parsed.path
+
+        if path != "/save-list":
+            if path == "/toggle-star":
                 self._handle_toggle_star()
                 return
-            if self.path == "/toggle-unread":
+            if path == "/toggle-unread":
                 self._handle_toggle_unread()
+                return
+            if path == "/save-notes":
+                self._handle_save_notes()
+                return
+            if path == "/open-pdf":
+                self._handle_open_pdf()
                 return
             self.send_error(404, "Not Found")
             return
@@ -139,6 +183,91 @@ class Handler(SimpleHTTPRequestHandler):
 
     def _handle_toggle_unread(self):
         self._handle_toggle_flag("unread")
+
+    def _handle_save_notes(self):
+        content_length = int(self.headers.get("Content-Length", "0"))
+        raw = self.rfile.read(content_length)
+        try:
+            payload = json.loads(raw.decode("utf-8"))
+        except json.JSONDecodeError:
+            self.send_error(400, "Invalid JSON")
+            return
+
+        code = (payload.get("code") or "").strip()
+        notes = payload.get("notes", "")
+        if notes is None:
+            notes = ""
+        notes = str(notes)
+        if not code:
+            self.send_error(400, "Missing code")
+            return
+
+        metadata_path = ROOT / "METADATA" / "metadata.csv"
+        if not metadata_path.exists():
+            self.send_error(500, "metadata.csv not found")
+            return
+
+        rows = []
+        found = False
+        with metadata_path.open(newline="") as handle:
+            reader = csv.DictReader(handle)
+            fieldnames = list(reader.fieldnames or [])
+            for row in reader:
+                if (row.get("code") or "").strip() == code:
+                    row["notes"] = notes
+                    found = True
+                rows.append(row)
+
+        if not found:
+            self.send_error(404, "Code not found")
+            return
+
+        if "notes" not in fieldnames:
+            fieldnames.append("notes")
+
+        with metadata_path.open("w", newline="") as handle:
+            writer = csv.DictWriter(handle, fieldnames=fieldnames)
+            writer.writeheader()
+            writer.writerows(rows)
+
+        self._send_json({"code": code, "notes": notes})
+
+    def _handle_open_pdf(self):
+        content_length = int(self.headers.get("Content-Length", "0"))
+        raw = self.rfile.read(content_length)
+        try:
+            payload = json.loads(raw.decode("utf-8"))
+        except json.JSONDecodeError:
+            self.send_error(400, "Invalid JSON")
+            return
+
+        code = (payload.get("code") or "").strip()
+        if not code:
+            self.send_error(400, "Missing code")
+            return
+
+        pdf_root = (ROOT / "PDFs").resolve()
+        pdf_path = (pdf_root / f"{code}.pdf").resolve()
+        if pdf_root not in pdf_path.parents:
+            self.send_error(400, "Invalid code")
+            return
+        if not pdf_path.exists():
+            self.send_error(404, "PDF not found")
+            return
+
+        try:
+            opener = "evince" if shutil.which("evince") else "xdg-open"
+            subprocess.Popen(
+                [opener, str(pdf_path)],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                start_new_session=True,
+            )
+        except OSError:
+            self.send_error(500, "Failed to launch PDF viewer")
+            return
+
+        self._send_json({"code": code, "path": str(pdf_path)})
 
     def _handle_toggle_flag(self, field_name):
         content_length = int(self.headers.get("Content-Length", "0"))

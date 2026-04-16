@@ -3,7 +3,10 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Bibliography Finder</title>
+    <meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate, max-age=0" />
+    <meta http-equiv="Pragma" content="no-cache" />
+    <meta http-equiv="Expires" content="0" />
+    <title>Bibliography Workbench</title>
     <style>
       :root {
         --bg: #f8f4ef;
@@ -176,11 +179,16 @@
         font-size: 13px;
       }
 
-      .toggle-abstract {
+      .toggle-abstract,
+      .toggle-notes {
         margin-top: 10px;
         background: #eef3f7;
         color: var(--accent);
         border: 1px solid #d6d6d6;
+      }
+
+      .toggle-notes {
+        margin-left: 6px;
       }
 
       .toggle-abstract:disabled {
@@ -198,6 +206,54 @@
         color: #2f3941;
         line-height: 1.45;
         white-space: pre-wrap;
+      }
+
+      .notes-section {
+        margin-top: 12px;
+      }
+
+      .notes-label {
+        font-size: 13px;
+        color: var(--muted);
+        margin-bottom: 6px;
+      }
+
+      .notes-editor {
+        width: 100%;
+        min-height: 90px;
+        resize: vertical;
+        padding: 10px 12px;
+        border-radius: 10px;
+        border: 1px solid #d6d6d6;
+        font-family: inherit;
+        font-size: 14px;
+        line-height: 1.4;
+        background: #fff;
+      }
+
+      .notes-controls {
+        margin-top: 8px;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+      }
+
+      .notes-save {
+        background: #eef3f7;
+        color: var(--accent);
+        border: 1px solid #d6d6d6;
+        border-radius: 999px;
+        padding: 6px 12px;
+      }
+
+      .notes-save:disabled {
+        opacity: 0.65;
+        cursor: default;
+      }
+
+      .notes-status {
+        font-size: 12px;
+        color: var(--muted);
       }
 
       @keyframes fadeIn {
@@ -222,8 +278,8 @@
   </head>
   <body>
     <header>
-      <h1>Bibliography Finder</h1>
-      <p>Filter and scan your local metadata.csv without touching the PDFs.</p>
+      <h1>Bibliography Workbench</h1>
+      <p>Search, filter, and annotate metadata, then open local PDFs directly.</p>
     </header>
 
     <section class="panel">
@@ -277,11 +333,13 @@
           <input id="addedTo" type="date" />
         </div>
         <div>
-          <label for="addedSort">Sort by added date</label>
+          <label for="addedSort">Sort order</label>
           <select id="addedSort">
             <option value="">No sort</option>
-            <option value="desc">Newest first</option>
-            <option value="asc">Oldest first</option>
+            <option value="added_desc">Added date: newest first</option>
+            <option value="added_asc">Added date: oldest first</option>
+            <option value="publication_desc">Publication date: newest first</option>
+            <option value="publication_asc">Publication date: oldest first</option>
           </select>
         </div>
         <div>
@@ -301,6 +359,12 @@
 
     <section class="results" id="results"></section>
 
-    <script src="viewer.js"></script>
+    <script>
+      (function loadFreshViewerScript() {
+        const script = document.createElement("script");
+        script.src = `viewer.js?t=${Date.now()}`;
+        document.body.appendChild(script);
+      })();
+    </script>
   </body>
 </html>
