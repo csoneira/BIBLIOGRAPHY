@@ -175,6 +175,23 @@
         gap: 12px;
       }
 
+      .text-filters,
+      .journal-filter-row,
+      .final-filters {
+        grid-column: 1 / -1;
+        display: grid;
+        gap: 12px;
+      }
+
+      .text-filters,
+      .journal-filter-row {
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+      }
+
+      .final-filters {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+
       .saved-filter-bar {
         display: grid;
         grid-template-columns: minmax(220px, 1fr) auto minmax(180px, 1fr);
@@ -608,6 +625,11 @@
         .dashboard {
           grid-template-columns: 1fr;
         }
+        .text-filters,
+        .journal-filter-row,
+        .final-filters {
+          grid-template-columns: 1fr;
+        }
       }
     </style>
   </head>
@@ -660,45 +682,29 @@
             <input id="readTo" type="date" />
           </div>
         </div>
-        <div>
-          <label for="titleFilter">Title contains</label>
-          <input id="titleFilter" type="text" placeholder="muon, detector" />
+        <div class="text-filters">
+          <div>
+            <label for="titleFilter">Title contains</label>
+            <input id="titleFilter" type="text" placeholder="muon, detector" />
+          </div>
+          <div>
+            <label for="abstractFilter">Abstract contains</label>
+            <input id="abstractFilter" type="text" placeholder="calibration, detector response" />
+          </div>
+          <div>
+            <label for="keyword">Keywords contain</label>
+            <input id="keyword" type="text" placeholder="muon, detector" />
+          </div>
+          <div>
+            <label for="myKeyword">My keywords contain</label>
+            <input id="myKeyword" type="text" placeholder="project-x" />
+          </div>
         </div>
-        <div>
-          <label for="abstractFilter">Abstract contains</label>
-          <input id="abstractFilter" type="text" placeholder="calibration, detector response" />
-        </div>
-        <div>
-          <label for="keyword">Keywords contain</label>
-          <input id="keyword" type="text" placeholder="muon, detector" />
-        </div>
-        <div>
-          <label for="myKeyword">My keywords contain</label>
-          <input id="myKeyword" type="text" placeholder="project-x" />
-        </div>
-        <div>
-          <label for="journal">Journal contains</label>
-          <input id="journal" type="text" placeholder="Nature, NIM A" />
-        </div>
-        <div>
-          <label for="locationFilter">PDF location</label>
-          <select id="locationFilter">
-            <option value="">All PDFs</option>
-            <option value="local">Local on this computer</option>
-            <option value="remote">Remote on another computer</option>
-            <option value="not_added">PDF not added</option>
-          </select>
-        </div>
-        <div>
-          <label for="addedSort">Sort order</label>
-          <select id="addedSort">
-            <option value="">No sort</option>
-            <option value="random">Random order</option>
-            <option value="added_desc">Added date: newest first</option>
-            <option value="added_asc">Added date: oldest first</option>
-            <option value="publication_desc">Publication date: newest first</option>
-            <option value="publication_asc">Publication date: oldest first</option>
-          </select>
+        <div class="journal-filter-row">
+          <div>
+            <label for="journal">Journal contains</label>
+            <input id="journal" type="text" placeholder="Nature, NIM A" />
+          </div>
         </div>
         <div class="type-filter">
           <label>Types</label>
@@ -709,6 +715,28 @@
           <div class="status-options">
             <label><input id="starOnly" type="checkbox" /> Starred</label>
             <label><input id="unreadOnly" type="checkbox" /> Unread</label>
+          </div>
+        </div>
+        <div class="final-filters">
+          <div>
+            <label for="locationFilter">PDF location</label>
+            <select id="locationFilter">
+              <option value="">All PDFs</option>
+              <option value="local">Local on this computer</option>
+              <option value="remote">Remote on another computer</option>
+              <option value="not_added">PDF not added</option>
+            </select>
+          </div>
+          <div>
+            <label for="addedSort">Sort order</label>
+            <select id="addedSort">
+              <option value="">No sort</option>
+              <option value="random">Random order</option>
+              <option value="added_desc">Added date: newest first</option>
+              <option value="added_asc">Added date: oldest first</option>
+              <option value="publication_desc">Publication date: newest first</option>
+              <option value="publication_asc">Publication date: oldest first</option>
+            </select>
           </div>
         </div>
       </div>
