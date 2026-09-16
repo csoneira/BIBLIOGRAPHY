@@ -54,6 +54,41 @@ function catalogTypes(rows) {
     .sort((a, b) => a.localeCompare(b));
 }
 
+function catalogMyKeywords(rows, config) {
+  const keywords = new Map();
+  rows.forEach((row) => {
+    (row.my_keywords || "").split(/[;,]/).forEach((value) => {
+      const keyword = value.trim();
+      if (keyword && !keywords.has(keyword.toLocaleLowerCase())) {
+        keywords.set(keyword.toLocaleLowerCase(), keyword);
+      }
+    });
+  });
+  (config.my_keywords || []).forEach((entry) => {
+    const keyword = (typeof entry === "string" ? entry : entry?.tag || "").trim();
+    if (keyword && !keywords.has(keyword.toLocaleLowerCase())) {
+      keywords.set(keyword.toLocaleLowerCase(), keyword);
+    }
+  });
+  return [...keywords.values()].sort((a, b) => a.localeCompare(b));
+}
+
+function setupMyKeywords(rows, config) {
+  const keywords = catalogMyKeywords(rows, config);
+  const source = document.getElementById("manageKeywordSource");
+  const known = document.getElementById("knownMyKeywords");
+  source.innerHTML = "";
+  known.innerHTML = "";
+  keywords.forEach((keyword) => {
+    source.add(new Option(keyword, keyword));
+    const suggestion = document.createElement("option");
+    suggestion.value = keyword;
+    known.appendChild(suggestion);
+  });
+  document.getElementById("manageKeywordBtn").disabled = !keywords.length;
+  document.getElementById("deleteKeywordBtn").disabled = !keywords.length;
+}
+
 function setupTypes(rows) {
   const types = catalogTypes(rows);
   const entryType = document.getElementById("entryType");
@@ -163,6 +198,12 @@ async function loadSavedFilters() {
   return filters.sort((a, b) => (a.name || "").localeCompare(b.name || ""));
 }
 
+async function loadKeywordConfig() {
+  const response = await fetch(freshUrl("../CONFIGS/config.json"), { cache: "no-store" });
+  if (!response.ok) return { my_keywords: [] };
+  return response.json();
+}
+
 function setupSavedFilterManager(filters) {
   const select = document.getElementById("savedFilterSelect");
   const nameInput = document.getElementById("savedFilterName");
@@ -247,10 +288,13 @@ async function setupWallpaperOptions() {
 
 async function init() {
   try {
-    const [rows, savedFilters] = await Promise.all([loadRows(), loadSavedFilters()]);
+    const [rows, savedFilters, keywordConfig] = await Promise.all([
+      loadRows(), loadSavedFilters(), loadKeywordConfig(),
+    ]);
     const editCode = new URLSearchParams(location.search).get("edit");
     setupTypes(rows);
     setupEntries(rows);
+    setupMyKeywords(rows, keywordConfig);
     setupSavedFilterManager(savedFilters);
     await setupWallpaperOptions();
     resetForm(false);
@@ -427,6 +471,31 @@ async function init() {
         document.getElementById("manageTypeStatus").textContent = `Updated ${result.updated} entries`;
         window.setTimeout(() => location.reload(), 500);
       } catch (error) { document.getElementById("manageTypeStatus").textContent = "Change failed"; alert(error.message); }
+    });
+
+    document.getElementById("manageKeywordBtn").addEventListener("click", async () => {
+      const source = document.getElementById("manageKeywordSource").value;
+      const target = document.getElementById("manageKeywordTarget").value.trim();
+      const status = document.getElementById("manageKeywordStatus");
+      if (!source || !target) { alert("Choose an existing keyword and its destination keyword."); return; }
+      if (!confirm(`Change every “${source}” keyword to “${target}”?`)) return;
+      try {
+        const result = await postJson("/manage-my-keyword", { action: "merge", source, target });
+        status.textContent = `Updated ${result.updated} entries`;
+        window.setTimeout(() => location.reload(), 500);
+      } catch (error) { status.textContent = "Change failed"; alert(error.message); }
+    });
+
+    document.getElementById("deleteKeywordBtn").addEventListener("click", async () => {
+      const source = document.getElementById("manageKeywordSource").value;
+      const status = document.getElementById("manageKeywordStatus");
+      if (!source) { alert("Choose an existing keyword."); return; }
+      if (!confirm(`Delete “${source}” from every entry and the automatic tagging rules?`)) return;
+      try {
+        const result = await postJson("/manage-my-keyword", { action: "delete", source });
+        status.textContent = `Removed from ${result.updated} entries`;
+        window.setTimeout(() => location.reload(), 500);
+      } catch (error) { status.textContent = "Delete failed"; alert(error.message); }
     });
   } catch (error) {
     document.getElementById("entryStatus").textContent = error.message;

@@ -57,7 +57,7 @@
     <header>
       <div class="page-heading">
         <h1>Options</h1>
-        <p>Create and edit catalog entries, merge duplicates, and maintain document types.</p>
+        <p>Create and edit catalog entries, merge duplicates, types, and personal keywords.</p>
       </div>
       <nav>
         <a class="nav-link" href="viewer.html">Bibliography</a>
@@ -180,6 +180,20 @@
         </div>
         <div class="actions"><button class="primary" id="manageTypeBtn" type="button">Rename / merge type</button><span class="status" id="manageTypeStatus"></span></div>
         <p>Renaming to an existing type merges the two types throughout the catalog.</p>
+      </details>
+
+      <details class="panel">
+        <summary>Manage my keywords</summary>
+        <div class="grid">
+          <div><label for="manageKeywordSource">Existing keyword</label><select id="manageKeywordSource"></select></div>
+          <div><label for="manageKeywordTarget">Rename or merge into</label><input id="manageKeywordTarget" list="knownMyKeywords" placeholder="existing or new keyword" /><datalist id="knownMyKeywords"></datalist></div>
+        </div>
+        <div class="actions">
+          <button class="primary" id="manageKeywordBtn" type="button">Rename / merge keyword</button>
+          <button class="danger" id="deleteKeywordBtn" type="button">Delete keyword</button>
+          <span class="status" id="manageKeywordStatus"></span>
+        </div>
+        <p>Changes apply to every catalog entry and to automatic tagging rules. Deleting removes the keyword from all entries. These actions can be undone.</p>
       </details>
     </main>
     <script src="wallpaper.js"></script>

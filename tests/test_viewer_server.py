@@ -1,5 +1,6 @@
 import csv
 import importlib.util
+import json
 import tempfile
 import unittest
 from pathlib import Path
@@ -99,6 +100,47 @@ class TestCreateMetadataEntry(unittest.TestCase):
             rows = server.load_metadata_rows()
             self.assertEqual(rows[0]["type"], "article")
 
+    def test_manage_my_keywords_renames_merges_and_deletes(self):
+        repo_root = Path(__file__).resolve().parents[1]
+        server = load_server(repo_root / "CODE" / "viewer_server.py")
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            root = Path(tmp_dir)
+            server.ROOT = root
+            server.METADATA_FILE = root / "METADATA" / "metadata.csv"
+            config_file = root / "CONFIGS" / "config.json"
+            config_file.parent.mkdir(parents=True)
+            config_file.write_text(
+                '{"my_keywords": ['
+                '{"tag": "rpc", "terms": ["resistive plate chamber"]},'
+                '{"tag": "detectors", "terms": ["instrumentation"]}'
+                ']}',
+                encoding="utf-8",
+            )
+            server.create_metadata_entry(
+                {"title": "One", "type": "article", "my_keywords": "rpc, detectors"}
+            )
+            server.create_metadata_entry(
+                {"title": "Two", "type": "article", "my_keywords": "RPC; cosmic-rays"}
+            )
+
+            self.assertEqual(server.manage_my_keyword("merge", "rpc", "detectors"), 2)
+            rows = server.load_metadata_rows()
+            self.assertEqual(rows[0]["my_keywords"], "detectors")
+            self.assertEqual(rows[1]["my_keywords"], "detectors, cosmic-rays")
+            config = json.loads(config_file.read_text(encoding="utf-8"))
+            self.assertEqual([item["tag"] for item in config["my_keywords"]], ["detectors"])
+            self.assertEqual(
+                config["my_keywords"][0]["terms"],
+                ["instrumentation", "resistive plate chamber"],
+            )
+
+            self.assertEqual(server.manage_my_keyword("delete", "detectors"), 2)
+            self.assertEqual(server.load_metadata_rows()[0]["my_keywords"], "")
+            self.assertEqual(
+                json.loads(config_file.read_text(encoding="utf-8"))["my_keywords"], []
+            )
+
     def test_snapshot_undo_restores_metadata(self):
         repo_root = Path(__file__).resolve().parents[1]
         server = load_server(repo_root / "CODE" / "viewer_server.py")
@@ -113,11 +155,19 @@ class TestCreateMetadataEntry(unittest.TestCase):
             original = server.create_metadata_entry(
                 {"title": "Original", "publication_date": "2024-01", "type": "article"}
             )
+            config_file = root / "CONFIGS" / "config.json"
+            config_file.parent.mkdir(parents=True)
+            config_file.write_text('{"my_keywords": [{"tag": "original"}]}', encoding="utf-8")
             server.create_change_snapshot("test edit")
             server.update_metadata_entry({**original, "title": "Changed"})
+            config_file.write_text('{"my_keywords": []}', encoding="utf-8")
             result = server.undo_last_change()
             self.assertEqual(result["action"], "test edit")
             self.assertEqual(server.load_metadata_rows()[0]["title"], "Original")
+            self.assertEqual(
+                json.loads(config_file.read_text(encoding="utf-8"))["my_keywords"][0]["tag"],
+                "original",
+            )
 
     def test_undo_reverses_created_and_trashed_pdf_moves(self):
         repo_root = Path(__file__).resolve().parents[1]

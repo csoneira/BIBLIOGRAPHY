@@ -90,6 +90,9 @@ def create_change_snapshot(action: str) -> Path:
         shutil.copy2(ABSTRACTS_FILE, snapshot / "abstracts.csv")
     if SAVED_LISTS_DIR.exists():
         shutil.copytree(SAVED_LISTS_DIR, snapshot / "saved_lists")
+    keyword_config = ROOT / "CONFIGS" / "config.json"
+    if keyword_config.exists():
+        shutil.copy2(keyword_config, snapshot / "config.json")
     (snapshot / "manifest.json").write_text(
         json.dumps({"action": action, "created_at": stamp}, indent=2),
         encoding="utf-8",
@@ -129,6 +132,10 @@ def undo_last_change() -> dict:
         shutil.copy2(snapshot / "metadata.csv", METADATA_FILE)
     if (snapshot / "abstracts.csv").exists():
         shutil.copy2(snapshot / "abstracts.csv", ABSTRACTS_FILE)
+    if (snapshot / "config.json").exists():
+        keyword_config = ROOT / "CONFIGS" / "config.json"
+        keyword_config.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(snapshot / "config.json", keyword_config)
     saved_backup = snapshot / "saved_lists"
     if saved_backup.exists():
         SAVED_LISTS_DIR.mkdir(parents=True, exist_ok=True)
@@ -585,6 +592,111 @@ def manage_type(action: str, source: str, target: str = "") -> int:
     return len(affected)
 
 
+def keyword_parts(value: str) -> list[str]:
+    return [part.strip() for part in re.split(r"[;,]", str(value or "")) if part.strip()]
+
+
+def validate_keyword(value: str, field_name: str) -> str:
+    value = str(value or "").strip()
+    if not value:
+        raise ValueError(f"{field_name} keyword is required")
+    if len(value) > 80 or re.search(r"[;,\r\n]", value):
+        raise ValueError("Keywords must be 80 characters or fewer and cannot contain separators")
+    return value
+
+
+def manage_my_keyword(action: str, source: str, target: str = "") -> int:
+    source = validate_keyword(source, "A source")
+    if action not in {"rename", "merge", "delete"}:
+        raise ValueError("Unknown keyword action")
+    target = validate_keyword(target, "A destination") if action in {"rename", "merge"} else ""
+    source_key = source.casefold()
+    target_key = target.casefold()
+    rows = load_metadata_rows()
+    updated = 0
+    found = False
+
+    for row in rows:
+        parts = keyword_parts(row.get("my_keywords", ""))
+        if not any(part.casefold() == source_key for part in parts):
+            continue
+        found = True
+        replacement = []
+        seen = set()
+        for part in parts:
+            if part.casefold() == source_key:
+                if action == "delete":
+                    continue
+                part = target
+            key = part.casefold()
+            if key not in seen:
+                seen.add(key)
+                replacement.append(part)
+        row["my_keywords"] = ", ".join(replacement)
+        updated += 1
+
+    config_path = ROOT / "CONFIGS" / "config.json"
+    config = {}
+    if config_path.exists():
+        try:
+            config = json.loads(config_path.read_text(encoding="utf-8"))
+        except json.JSONDecodeError as exc:
+            raise ValueError("CONFIGS/config.json is not valid JSON") from exc
+    entries = config.get("my_keywords", [])
+    if not isinstance(entries, list):
+        raise ValueError("The my_keywords configuration must be a list")
+
+    source_entries = []
+    target_entry = None
+    for entry in entries:
+        tag = entry if isinstance(entry, str) else entry.get("tag", "") if isinstance(entry, dict) else ""
+        if str(tag).strip().casefold() == source_key:
+            source_entries.append(entry)
+            found = True
+        elif action != "delete" and str(tag).strip().casefold() == target_key:
+            target_entry = entry
+
+    if not found:
+        raise ValueError("Keyword not found")
+
+    if source_entries:
+        if action == "delete":
+            entries = [entry for entry in entries if entry not in source_entries]
+        elif target_entry is not None:
+            target_terms = target_entry.setdefault("terms", []) if isinstance(target_entry, dict) else [target]
+            merged_terms = list(target_terms)
+            known_terms = {str(term).casefold() for term in merged_terms}
+            for entry in source_entries:
+                terms = entry.get("terms", []) if isinstance(entry, dict) else [entry]
+                for term in terms:
+                    if str(term).casefold() not in known_terms:
+                        known_terms.add(str(term).casefold())
+                        merged_terms.append(term)
+            if isinstance(target_entry, dict):
+                target_entry["terms"] = merged_terms
+            entries = [entry for entry in entries if entry not in source_entries]
+        else:
+            primary = source_entries[0]
+            if isinstance(primary, dict):
+                primary["tag"] = target
+            else:
+                index = entries.index(primary)
+                entries[index] = {"tag": target, "terms": [primary]}
+            entries = [entry for entry in entries if entry is primary or entry not in source_entries]
+        config["my_keywords"] = entries
+        config_path.parent.mkdir(parents=True, exist_ok=True)
+        with tempfile.NamedTemporaryFile(
+            "w", dir=config_path.parent, prefix=".config-", suffix=".tmp",
+            delete=False, encoding="utf-8",
+        ) as handle:
+            temp_path = Path(handle.name)
+            handle.write(json.dumps(config, indent=2, ensure_ascii=False) + "\n")
+        os.replace(temp_path, config_path)
+
+    write_metadata_rows(rows)
+    return updated
+
+
 def safe_saved_filter_name(name: str) -> str:
     name = str(name or "").strip()
     safe_name = "".join(ch for ch in name if ch.isalnum() or ch in ("-", "_", " ")).strip()
@@ -715,6 +827,7 @@ class Handler(SimpleHTTPRequestHandler):
                 "/set-pdf-hosts",
                 "/mark-viewed",
                 "/manage-type",
+                "/manage-my-keyword",
                 "/merge-entries",
                 "/lookup-reference",
                 "/undo-last-change",
@@ -785,6 +898,9 @@ class Handler(SimpleHTTPRequestHandler):
                 return
             if path == "/manage-type":
                 self._handle_manage_type()
+                return
+            if path == "/manage-my-keyword":
+                self._handle_manage_my_keyword()
                 return
             if path == "/manage-saved-filter":
                 self._handle_manage_saved_filter()
@@ -1074,6 +1190,23 @@ class Handler(SimpleHTTPRequestHandler):
             with _WRITE_LOCK:
                 snapshot = create_change_snapshot("manage types")
                 count = manage_type(
+                    str(payload.get("action") or ""),
+                    str(payload.get("source") or ""),
+                    str(payload.get("target") or ""),
+                )
+        except (json.JSONDecodeError, ValueError) as exc:
+            if "snapshot" in locals():
+                discard_snapshot(snapshot)
+            self.send_error(400, str(exc))
+            return
+        self._send_json({"updated": count})
+
+    def _handle_manage_my_keyword(self):
+        try:
+            payload = self._read_json_payload()
+            with _WRITE_LOCK:
+                snapshot = create_change_snapshot("manage my keywords")
+                count = manage_my_keyword(
                     str(payload.get("action") or ""),
                     str(payload.get("source") or ""),
                     str(payload.get("target") or ""),
