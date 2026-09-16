@@ -223,6 +223,37 @@ class TestCreateMetadataEntry(unittest.TestCase):
             self.assertEqual(len(server.load_metadata_rows()), 2)
             self.assertTrue(source_pdf.exists())
 
+    def test_saved_filters_can_be_renamed_deleted_and_undone(self):
+        repo_root = Path(__file__).resolve().parents[1]
+        server = load_server(repo_root / "CODE" / "viewer_server.py")
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            root = Path(tmp_dir)
+            server.ROOT = root
+            server.METADATA_FILE = root / "METADATA" / "metadata.csv"
+            server.ABSTRACTS_FILE = root / "METADATA" / "abstracts.csv"
+            server.SAVED_LISTS_DIR = root / "SAVED_LISTS"
+            server.CHANGE_BACKUP_DIR = root / "METADATA" / "backups" / "viewer_changes"
+            server.SAVED_LISTS_DIR.mkdir()
+            original = server.SAVED_LISTS_DIR / "Books.json"
+            original.write_text(
+                '{"name":"Books","filters":{"types":["book"]},"codes":[],"dynamic":true}',
+                encoding="utf-8",
+            )
+
+            server.create_change_snapshot("manage saved filter")
+            renamed = server.manage_saved_filter("rename", "Books.json", "Reference books")
+            self.assertEqual(renamed["filename"], "Reference books.json")
+            self.assertFalse(original.exists())
+            self.assertTrue((server.SAVED_LISTS_DIR / "Reference books.json").exists())
+            server.undo_last_change()
+            self.assertTrue(original.exists())
+
+            server.create_change_snapshot("manage saved filter")
+            server.manage_saved_filter("delete", "Books.json")
+            self.assertFalse(original.exists())
+            server.undo_last_change()
+            self.assertTrue(original.exists())
+
 
 if __name__ == "__main__":
     unittest.main()

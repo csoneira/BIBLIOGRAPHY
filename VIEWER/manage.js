@@ -156,12 +156,36 @@ async function loadRows() {
   return rows;
 }
 
+async function loadSavedFilters() {
+  const response = await fetch(freshUrl("/saved-filters"), { cache: "no-store" });
+  if (!response.ok) throw new Error("Saved filters could not be loaded");
+  const filters = (await response.json()).filter((item) => item.dynamic);
+  return filters.sort((a, b) => (a.name || "").localeCompare(b.name || ""));
+}
+
+function setupSavedFilterManager(filters) {
+  const select = document.getElementById("savedFilterSelect");
+  const nameInput = document.getElementById("savedFilterName");
+  select.innerHTML = "";
+  filters.forEach((filter) => select.add(new Option(filter.name || filter.filename, filter.filename)));
+  const updateSelection = () => {
+    const selected = filters.find((filter) => filter.filename === select.value);
+    nameInput.value = selected?.name || "";
+    nameInput.disabled = !selected;
+    document.getElementById("renameFilterBtn").disabled = !selected;
+    document.getElementById("deleteFilterBtn").disabled = !selected;
+  };
+  select.addEventListener("change", updateSelection);
+  updateSelection();
+}
+
 async function init() {
   try {
-    const rows = await loadRows();
+    const [rows, savedFilters] = await Promise.all([loadRows(), loadSavedFilters()]);
     const editCode = new URLSearchParams(location.search).get("edit");
     setupTypes(rows);
     setupEntries(rows);
+    setupSavedFilterManager(savedFilters);
     resetForm(false);
 
     if (editCode) {
@@ -202,6 +226,37 @@ async function init() {
       } finally {
         button.disabled = false;
         button.textContent = "Audit PDFs";
+      }
+    });
+
+    document.getElementById("renameFilterBtn").addEventListener("click", async () => {
+      const filename = document.getElementById("savedFilterSelect").value;
+      const newName = document.getElementById("savedFilterName").value.trim();
+      const current = savedFilters.find((filter) => filter.filename === filename);
+      if (!current || !newName) { alert("Choose a filter and enter its new name."); return; }
+      if (!confirm(`Rename “${current.name}” to “${newName}”?`)) return;
+      try {
+        await postJson("/manage-saved-filter", { action: "rename", filename, new_name: newName });
+        document.getElementById("savedFilterManageStatus").textContent = "Filter renamed";
+        window.setTimeout(() => location.reload(), 500);
+      } catch (error) {
+        document.getElementById("savedFilterManageStatus").textContent = "Rename failed";
+        alert(error.message);
+      }
+    });
+
+    document.getElementById("deleteFilterBtn").addEventListener("click", async () => {
+      const filename = document.getElementById("savedFilterSelect").value;
+      const current = savedFilters.find((filter) => filter.filename === filename);
+      if (!current) { alert("Choose a saved filter first."); return; }
+      if (!confirm(`Delete the saved filter “${current.name}”? You can undo this action.`)) return;
+      try {
+        await postJson("/manage-saved-filter", { action: "delete", filename });
+        document.getElementById("savedFilterManageStatus").textContent = "Filter deleted";
+        window.setTimeout(() => location.reload(), 500);
+      } catch (error) {
+        document.getElementById("savedFilterManageStatus").textContent = "Delete failed";
+        alert(error.message);
       }
     });
 

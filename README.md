@@ -139,6 +139,7 @@ python3 CODE/bib.py mark-pdf-host --host COMPUTER-NAME --all
 - One-step Undo backed by automatic snapshots in `METADATA/backups/viewer_changes/`.
 - `last_viewed` discovery history with Read from/Read to filters, plus a one-entry Surprise me action.
 - Saved Filters restore their conditions into the form for review or modification before they are applied.
+- Saved Filters can be renamed or deleted from Options, with both operations covered by Undo last change.
 - Type rename/merge management; merging removes the unused old type from selectors.
 - Duplicate-entry merge combines metadata, abstracts, and PDF files while remaining undoable.
 - DOI and arXiv lookup fills the entry form from Crossref or arXiv metadata.

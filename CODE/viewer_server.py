@@ -584,6 +584,49 @@ def manage_type(action: str, source: str, target: str = "") -> int:
     return len(affected)
 
 
+def safe_saved_filter_name(name: str) -> str:
+    name = str(name or "").strip()
+    safe_name = "".join(ch for ch in name if ch.isalnum() or ch in ("-", "_", " ")).strip()
+    if not safe_name:
+        raise ValueError("A valid filter name is required")
+    return safe_name
+
+
+def manage_saved_filter(action: str, filename: str, new_name: str = "") -> dict:
+    filename = str(filename or "").strip()
+    if not filename or Path(filename).name != filename or not filename.endswith(".json"):
+        raise ValueError("Choose a valid saved filter")
+    source = SAVED_LISTS_DIR / filename
+    if not source.exists():
+        raise LookupError("Saved filter not found")
+    if action == "delete":
+        source.unlink()
+        return {"action": "delete", "filename": filename}
+    if action != "rename":
+        raise ValueError("Unknown saved-filter action")
+
+    display_name = str(new_name or "").strip()
+    destination = SAVED_LISTS_DIR / f"{safe_saved_filter_name(display_name)}.json"
+    if destination != source and destination.exists():
+        raise FileExistsError("A saved filter with that name already exists")
+    try:
+        data = json.loads(source.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as exc:
+        raise ValueError("The saved filter file is invalid") from exc
+    data["name"] = display_name
+    with tempfile.NamedTemporaryFile(
+        "w", dir=SAVED_LISTS_DIR, prefix=".filter-", suffix=".tmp",
+        delete=False, encoding="utf-8",
+    ) as handle:
+        temp_path = Path(handle.name)
+        json.dump(data, handle, indent=2)
+        handle.write("\n")
+    os.replace(temp_path, destination)
+    if destination != source:
+        source.unlink()
+    return {"action": "rename", "filename": destination.name, "name": display_name}
+
+
 def load_abstracts_map() -> dict:
     if not ABSTRACTS_FILE.exists():
         _ABSTRACT_CACHE["mtime_ns"] = None
@@ -629,6 +672,7 @@ class Handler(SimpleHTTPRequestHandler):
                 "/pdf-audit",
                 "/save-list",
                 "/save-filter",
+                "/manage-saved-filter",
                 "/save-notes",
                 "/create-entry",
                 "/update-entry",
@@ -705,6 +749,9 @@ class Handler(SimpleHTTPRequestHandler):
             if path == "/manage-type":
                 self._handle_manage_type()
                 return
+            if path == "/manage-saved-filter":
+                self._handle_manage_saved_filter()
+                return
             if path == "/merge-entries":
                 self._handle_merge_entries()
                 return
@@ -745,13 +792,14 @@ class Handler(SimpleHTTPRequestHandler):
             self.send_error(400, "Missing name")
             return
 
-        safe_name = "".join(ch for ch in name if ch.isalnum() or ch in ("-", "_", " ")).strip()
-        if not safe_name:
+        try:
+            safe_name = safe_saved_filter_name(name)
+        except ValueError:
             self.send_error(400, "Invalid name")
             return
 
         with _WRITE_LOCK:
-            create_change_snapshot("save list")
+            create_change_snapshot("save filter")
             SAVED_LISTS_DIR.mkdir(parents=True, exist_ok=True)
             path = SAVED_LISTS_DIR / f"{safe_name}.json"
 
@@ -996,6 +1044,33 @@ class Handler(SimpleHTTPRequestHandler):
             self.send_error(400, str(exc))
             return
         self._send_json({"updated": count})
+
+    def _handle_manage_saved_filter(self):
+        try:
+            payload = self._read_json_payload()
+            with _WRITE_LOCK:
+                snapshot = create_change_snapshot("manage saved filter")
+                result = manage_saved_filter(
+                    str(payload.get("action") or ""),
+                    str(payload.get("filename") or ""),
+                    str(payload.get("new_name") or ""),
+                )
+        except (json.JSONDecodeError, ValueError) as exc:
+            if "snapshot" in locals():
+                discard_snapshot(snapshot)
+            self.send_error(400, str(exc))
+            return
+        except FileExistsError as exc:
+            if "snapshot" in locals():
+                discard_snapshot(snapshot)
+            self.send_error(409, str(exc))
+            return
+        except LookupError as exc:
+            if "snapshot" in locals():
+                discard_snapshot(snapshot)
+            self.send_error(404, str(exc))
+            return
+        self._send_json(result)
 
     def _handle_merge_entries(self):
         try:

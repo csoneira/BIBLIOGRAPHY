@@ -58,6 +58,26 @@
         </div>
       </section>
 
+      <details class="panel">
+        <summary>Manage saved filters</summary>
+        <div class="grid">
+          <div>
+            <label for="savedFilterSelect">Saved filter</label>
+            <select id="savedFilterSelect"></select>
+          </div>
+          <div>
+            <label for="savedFilterName">Filter name</label>
+            <input id="savedFilterName" type="text" />
+          </div>
+        </div>
+        <div class="actions">
+          <button class="primary" id="renameFilterBtn" type="button">Rename filter</button>
+          <button class="danger" id="deleteFilterBtn" type="button">Delete filter</button>
+          <span class="status" id="savedFilterManageStatus"></span>
+        </div>
+        <p>Renaming or deleting a filter can be reversed with Undo last change.</p>
+      </details>
+
       <details class="panel" id="entryPanel">
         <summary id="entryFormTitle">Create a metadata-only entry</summary>
         <form id="entryForm">
