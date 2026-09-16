@@ -623,16 +623,7 @@
         <button class="primary" id="applyBtn">Apply filters</button>
         <button class="secondary" id="resetBtn">Reset</button>
         <button class="secondary" id="loadListBtn">Load selected</button>
-        <button class="secondary" id="saveBtn">Save reference list</button>
-        <button class="secondary" id="saveViewBtn">Save filter</button>
         <button class="secondary" id="surpriseBtn">Surprise me</button>
-        <select id="citationFormat" aria-label="Citation format" style="width: auto">
-          <option value="formatted">Formatted citation</option>
-          <option value="bibtex">BibTeX</option>
-          <option value="ris">RIS</option>
-        </select>
-        <button class="secondary" id="copyCitationsBtn">Copy results</button>
-        <button class="secondary" id="downloadCitationsBtn">Download citations</button>
         <label class="action-check"><input id="hideRecent" type="checkbox" /> Exclude entries viewed in the last 30 days</label>
       </div>
       <div class="result-summary" aria-label="Current result summary">
@@ -642,6 +633,17 @@
         <div class="result-summary-item"><strong id="resultCountNotAdded">–</strong>Not added</div>
         <div class="result-summary-item"><strong id="resultCountStarred">–</strong>Starred</div>
         <div class="result-summary-item"><strong id="resultCountUnread">–</strong>Unread</div>
+      </div>
+      <div class="actions" aria-label="Actions for current results">
+        <button class="secondary" id="saveBtn">Save reference list</button>
+        <button class="secondary" id="saveViewBtn">Save filter</button>
+        <select id="citationFormat" aria-label="Citation format" style="width: auto">
+          <option value="formatted">Formatted citation</option>
+          <option value="bibtex">BibTeX</option>
+          <option value="ris">RIS</option>
+        </select>
+        <button class="secondary" id="copyCitationsBtn">Copy results</button>
+        <button class="secondary" id="downloadCitationsBtn">Download citations</button>
       </div>
     </section>
 
