@@ -1,0 +1,25 @@
+{
+  "name": "Books",
+  "filters": {
+    "fromDate": "",
+    "toDate": "",
+    "types": [
+      "book"
+    ],
+    "title": "",
+    "starOnly": false,
+    "unreadOnly": false,
+    "location": "",
+    "journal": "",
+    "keyword": "",
+    "myKeyword": "",
+    "abstract": "",
+    "addedFrom": "",
+    "addedTo": "",
+    "readFrom": "",
+    "readTo": "",
+    "addedSort": ""
+  },
+  "codes": [],
+  "dynamic": true
+}

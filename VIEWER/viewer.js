@@ -109,6 +109,7 @@ function applyFilters(rows, filters) {
     const starValue = (row.star || "").toString();
     const unreadValue = (row.unread || "").toString();
     const addedAt = (row.added_at || "").trim();
+    const lastViewed = (row.last_viewed || "").trim();
     if (filters.fromDate && (!publicationRange || publicationRange.end < filters.fromDate)) {
       return false;
     }
@@ -129,14 +130,6 @@ function applyFilters(rows, filters) {
     }
     if (filters.location && row.pdf_status !== filters.location) {
       return false;
-    }
-    if (filters.hideRecent && row.last_viewed) {
-      const cutoff = new Date();
-      cutoff.setDate(cutoff.getDate() - 30);
-      const cutoffText = cutoff.toISOString().slice(0, 10);
-      if (row.last_viewed >= cutoffText) {
-        return false;
-      }
     }
     if (filters.journal && !(row.journal || "").toLowerCase().includes(filters.journal)) {
       return false;
@@ -159,6 +152,12 @@ function applyFilters(rows, filters) {
       if (!isIsoDate(addedAt) || addedAt > filters.addedTo) {
         return false;
       }
+    }
+    if (filters.readFrom && (!isIsoDate(lastViewed) || lastViewed < filters.readFrom)) {
+      return false;
+    }
+    if (filters.readTo && (!isIsoDate(lastViewed) || lastViewed > filters.readTo)) {
+      return false;
     }
     return true;
   });
@@ -234,7 +233,7 @@ function sortRows(rows, sortMode) {
     return shuffled;
   }
 
-  // Backward compatibility for older saved lists that stored only asc/desc.
+  // Backward compatibility for older saved filters that stored only asc/desc.
   if (sortMode === "asc" || sortMode === "desc") {
     return sortByAddedDate(rows, sortMode);
   }
@@ -251,14 +250,6 @@ function sortRows(rows, sortMode) {
     return sortByPublicationDate(rows, "desc");
   }
   return rows;
-}
-
-function applySavedList(rows, savedList) {
-  const codes = new Set((savedList.codes || []).filter(Boolean));
-  if (!codes.size) {
-    return [];
-  }
-  return rows.filter((row) => codes.has(row.code));
 }
 
 function renderResults(rows) {
@@ -567,7 +558,6 @@ function getFilters() {
     title: document.getElementById("titleFilter").value.trim().toLowerCase(),
     starOnly: document.getElementById("starOnly").checked,
     unreadOnly: document.getElementById("unreadOnly").checked,
-    hideRecent: document.getElementById("hideRecent").checked,
     location: document.getElementById("locationFilter").value,
     journal: document.getElementById("journal").value.trim().toLowerCase(),
     keyword: document.getElementById("keyword").value.trim().toLowerCase(),
@@ -575,6 +565,8 @@ function getFilters() {
     abstract: document.getElementById("abstractFilter").value.trim().toLowerCase(),
     addedFrom: document.getElementById("addedFrom").value.trim(),
     addedTo: document.getElementById("addedTo").value.trim(),
+    readFrom: document.getElementById("readFrom").value.trim(),
+    readTo: document.getElementById("readTo").value.trim(),
     addedSort: document.getElementById("addedSort").value,
   };
 }
@@ -669,14 +661,14 @@ async function saveNotesOnServer(code, notes) {
   return response.json();
 }
 
-async function saveListToServer(name, rows, filters, dynamic = false) {
+async function saveFilterToServer(name, filters) {
   const payload = {
     name,
     filters,
-    codes: dynamic ? [] : rows.map((row) => row.code).filter(Boolean),
-    dynamic,
+    codes: [],
+    dynamic: true,
   };
-  const response = await fetch("/save-list", {
+  const response = await fetch("/save-filter", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
@@ -913,7 +905,6 @@ function setFilters(filters = {}) {
   document.getElementById("titleFilter").value = filters.title || "";
   document.getElementById("starOnly").checked = Boolean(filters.starOnly);
   document.getElementById("unreadOnly").checked = Boolean(filters.unreadOnly);
-  document.getElementById("hideRecent").checked = Boolean(filters.hideRecent);
   document.getElementById("locationFilter").value = filters.location || "";
   document.getElementById("journal").value = filters.journal || "";
   document.getElementById("keyword").value = filters.keyword || "";
@@ -921,6 +912,8 @@ function setFilters(filters = {}) {
   document.getElementById("abstractFilter").value = filters.abstract || "";
   document.getElementById("addedFrom").value = filters.addedFrom || "";
   document.getElementById("addedTo").value = filters.addedTo || "";
+  document.getElementById("readFrom").value = filters.readFrom || "";
+  document.getElementById("readTo").value = filters.readTo || "";
   document.getElementById("addedSort").value = filters.addedSort || "";
 }
 
@@ -997,30 +990,30 @@ async function loadAbstractsMap() {
   }
 }
 
-async function loadSavedLists() {
+async function loadSavedFilters() {
   const select = document.getElementById("savedList");
   select.innerHTML = "";
   const defaultOption = document.createElement("option");
   defaultOption.value = "";
-  defaultOption.textContent = "Select a saved reference list or filter";
+  defaultOption.textContent = "Select a saved filter";
   select.appendChild(defaultOption);
 
   try {
-    const response = await fetch(freshUrl("/saved-lists"), { cache: "no-store" });
+    const response = await fetch(freshUrl("/saved-filters"), { cache: "no-store" });
     if (!response.ok) {
-      throw new Error("Saved lists not available.");
+      throw new Error("Saved filters not available.");
     }
-    const lists = await response.json();
+    const lists = (await response.json()).filter((item) => item.dynamic);
     lists.sort((a, b) => (a.name || "").localeCompare(b.name || ""));
     lists.forEach((list) => {
       const option = document.createElement("option");
       option.value = list.filename;
-      option.textContent = `${list.dynamic ? "Saved Filter" : "Saved Reference List"}: ${list.name || list.filename}`;
+      option.textContent = list.name || list.filename;
       select.appendChild(option);
     });
     return lists;
   } catch (err) {
-    defaultOption.textContent = "Saved lists unavailable (use viewer_server.py)";
+    defaultOption.textContent = "Saved filters unavailable (use viewer_server.py)";
     select.disabled = true;
     return [];
   }
@@ -1029,7 +1022,7 @@ async function loadSavedLists() {
 async function init() {
   try {
     const rows = await loadData();
-    const savedLists = await loadSavedLists();
+    const savedFilters = await loadSavedFilters();
     let filteredRows = rows;
     setupFilterTypeOptions(rows);
     updateDashboard(rows);
@@ -1039,11 +1032,13 @@ async function init() {
       const filters = getFilters();
       filteredRows = sortRows(applyFilters(rows, filters), filters.addedSort);
       renderResults(filteredRows);
+      document.getElementById("savedFilterStatus").textContent = "Filters applied.";
     });
 
     document.getElementById("resetBtn").addEventListener("click", () => {
       setFilters();
       document.getElementById("savedList").value = "";
+      document.getElementById("savedFilterStatus").textContent = "";
       filteredRows = rows;
       renderResults(rows);
     });
@@ -1051,22 +1046,16 @@ async function init() {
     document.getElementById("loadListBtn").addEventListener("click", () => {
       const selection = document.getElementById("savedList").value;
       if (!selection) {
-        alert("Pick a saved reference list or saved filter first.");
+        alert("Pick a saved filter first.");
         return;
       }
-      const selectedList = savedLists.find((list) => list.filename === selection);
-      if (!selectedList) {
-        alert("The saved reference list or filter was not found. Refresh the page.");
+      const selectedFilter = savedFilters.find((item) => item.filename === selection);
+      if (!selectedFilter) {
+        alert("The saved filter was not found. Refresh the page.");
         return;
       }
-      setFilters(selectedList.filters || {});
-      const restoredFilters = getFilters();
-      const baseRows = selectedList.dynamic ? rows : applySavedList(rows, selectedList);
-      filteredRows = sortRows(
-        applyFilters(baseRows, restoredFilters),
-        restoredFilters.addedSort,
-      );
-      renderResults(filteredRows);
+      setFilters(selectedFilter.filters || {});
+      document.getElementById("savedFilterStatus").textContent = "Filter loaded — modify it if needed, then click Apply filters.";
     });
 
     document.getElementById("surpriseBtn").addEventListener("click", () => {
@@ -1207,46 +1196,17 @@ async function init() {
       }
     });
 
-    document.getElementById("saveBtn").addEventListener("click", async () => {
-      if (!filteredRows.length) {
-        alert("No results to save.");
-        return;
-      }
-      const name = prompt("Name for this saved reference list:");
-      if (!name) {
-        return;
-      }
-      try {
-        const result = await saveListToServer(name.trim(), filteredRows, getFilters());
-        alert(`Saved to ${result.path}`);
-      } catch (err) {
-        alert("Save failed. Start the viewer server with: python3 CODE/viewer_server.py");
-      }
-    });
-
     document.getElementById("saveViewBtn").addEventListener("click", async () => {
-      const name = prompt("Name for this saved filter:");
+      const selectedFilename = document.getElementById("savedList").value;
+      const selectedFilter = savedFilters.find((item) => item.filename === selectedFilename);
+      const name = prompt("Name for this saved filter:", selectedFilter?.name || "");
       if (!name) return;
       try {
-        await saveListToServer(name.trim(), [], getFilters(), true);
-        alert("Filter saved. It will include future entries that match these conditions.");
+        await saveFilterToServer(name.trim(), getFilters());
+        alert("Filter saved. Loading it later will restore these fields for review before applying.");
         window.location.reload();
       } catch (err) {
         alert("Could not save the filter.");
-      }
-    });
-
-    document.getElementById("copyCitationsBtn").addEventListener("click", async () => {
-      if (!filteredRows.length) {
-        alert("No results to cite.");
-        return;
-      }
-      const format = document.getElementById("citationFormat").value;
-      try {
-        await copyText(citationsText(filteredRows, format));
-        alert(`Copied ${filteredRows.length} citation${filteredRows.length === 1 ? "" : "s"}.`);
-      } catch (err) {
-        alert("Could not copy citations.");
       }
     });
 

@@ -622,11 +622,13 @@ class Handler(SimpleHTTPRequestHandler):
             or path == "/METADATA/abstracts.csv"
             or path in {
                 "/saved-lists",
+                "/saved-filters",
                 "/abstracts",
                 "/abstract",
                 "/pdf-status",
                 "/pdf-audit",
                 "/save-list",
+                "/save-filter",
                 "/save-notes",
                 "/create-entry",
                 "/update-entry",
@@ -660,7 +662,7 @@ class Handler(SimpleHTTPRequestHandler):
 
     def do_GET(self):
         parsed = urlparse(self.path)
-        if parsed.path == "/saved-lists":
+        if parsed.path in {"/saved-lists", "/saved-filters"}:
             self._handle_saved_lists()
             return
         if parsed.path == "/abstracts":
@@ -681,7 +683,7 @@ class Handler(SimpleHTTPRequestHandler):
         parsed = urlparse(self.path)
         path = parsed.path
 
-        if path != "/save-list":
+        if path not in {"/save-list", "/save-filter"}:
             if path == "/create-entry":
                 self._handle_create_entry()
                 return

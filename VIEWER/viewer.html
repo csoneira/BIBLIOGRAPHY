@@ -113,6 +113,18 @@
         grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
       }
 
+      .saved-filter-bar {
+        display: grid;
+        grid-template-columns: minmax(220px, 1fr) auto minmax(180px, 1fr);
+        align-items: end;
+        gap: 10px;
+        margin-bottom: 16px;
+      }
+
+      .saved-filter-bar button {
+        margin-bottom: 1px;
+      }
+
       label {
         display: block;
         font-size: 13px;
@@ -519,6 +531,10 @@
         .results {
           margin: 0 6vw 24px;
         }
+        .saved-filter-bar {
+          grid-template-columns: 1fr;
+          align-items: stretch;
+        }
       }
     </style>
   </head>
@@ -544,6 +560,16 @@
     </section>
 
     <section class="panel">
+      <div class="saved-filter-bar">
+        <div>
+          <label for="savedList">Saved filter</label>
+          <select id="savedList">
+            <option value="">Select a saved filter</option>
+          </select>
+        </div>
+        <button class="secondary" id="loadListBtn" type="button">Load filter</button>
+        <span class="entry-status" id="savedFilterStatus"></span>
+      </div>
       <div class="filters">
         <div>
           <label for="fromDate">From date</label>
@@ -598,6 +624,14 @@
           <input id="addedTo" type="date" />
         </div>
         <div>
+          <label for="readFrom">Read from</label>
+          <input id="readFrom" type="date" />
+        </div>
+        <div>
+          <label for="readTo">Read to</label>
+          <input id="readTo" type="date" />
+        </div>
+        <div>
           <label for="addedSort">Sort order</label>
           <select id="addedSort">
             <option value="">No sort</option>
@@ -608,12 +642,6 @@
             <option value="publication_asc">Publication date: oldest first</option>
           </select>
         </div>
-        <div>
-          <label for="savedList">Saved reference lists and filters</label>
-          <select id="savedList">
-            <option value="">Select a saved reference list or filter</option>
-          </select>
-        </div>
         <div class="type-filter">
           <label>Types</label>
           <div class="type-options" id="typeFilterOptions" aria-label="Filter by document types"></div>
@@ -622,9 +650,7 @@
       <div class="actions">
         <button class="primary" id="applyBtn">Apply filters</button>
         <button class="secondary" id="resetBtn">Reset</button>
-        <button class="secondary" id="loadListBtn">Load selected</button>
         <button class="secondary" id="surpriseBtn">Surprise me</button>
-        <label class="action-check"><input id="hideRecent" type="checkbox" /> Exclude entries viewed in the last 30 days</label>
       </div>
       <div class="result-summary" aria-label="Current result summary">
         <div class="result-summary-item"><strong id="resultCountTotal">–</strong>Results</div>
@@ -635,14 +661,12 @@
         <div class="result-summary-item"><strong id="resultCountUnread">–</strong>Unread</div>
       </div>
       <div class="actions" aria-label="Actions for current results">
-        <button class="secondary" id="saveBtn">Save reference list</button>
         <button class="secondary" id="saveViewBtn">Save filter</button>
         <select id="citationFormat" aria-label="Citation format" style="width: auto">
           <option value="formatted">Formatted citation</option>
           <option value="bibtex">BibTeX</option>
           <option value="ris">RIS</option>
         </select>
-        <button class="secondary" id="copyCitationsBtn">Copy results</button>
         <button class="secondary" id="downloadCitationsBtn">Download citations</button>
       </div>
     </section>

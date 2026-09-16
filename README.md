@@ -127,7 +127,7 @@ python3 CODE/bib.py mark-pdf-host --host COMPUTER-NAME --all
 ## Viewer Features (Current)
 
 - Filters on publication-date range, one or more catalog-defined types, title, journal, keywords, my_keywords,
-  abstract text, and added_at date range.
+  abstract text, added-at date range, and read-date range.
 - Sorting by `added_at` or publication date (`year`), ascending or descending, plus random discovery order.
 - `star` and `unread` toggles persisted to `METADATA/metadata.csv`.
 - Local, Remote, and Not added badges and filtering. Local availability is checked live;
@@ -137,14 +137,12 @@ python3 CODE/bib.py mark-pdf-host --host COMPUTER-NAME --all
 - Edit and recoverable delete controls for every entry.
 - Attach a PDF directly to an existing entry; duplicate titles and DOIs are detected.
 - One-step Undo backed by automatic snapshots in `METADATA/backups/viewer_changes/`.
-- `last_viewed` discovery history, a 30-day exclusion filter, and a one-entry Surprise me action.
-- Saved lists restore their stored filter selections.
-- Saved Filters re-run their conditions against the latest catalog, so future matching entries appear automatically;
-  Saved Reference Lists retain the exact references selected when they were saved.
+- `last_viewed` discovery history with Read from/Read to filters, plus a one-entry Surprise me action.
+- Saved Filters restore their conditions into the form for review or modification before they are applied.
 - Type rename/merge management; merging removes the unused old type from selectors.
-- Duplicate-entry merge combines metadata, abstracts, saved-list membership, and PDF files while remaining undoable.
+- Duplicate-entry merge combines metadata, abstracts, and PDF files while remaining undoable.
 - DOI and arXiv lookup fills the entry form from Crossref or arXiv metadata.
-- Per-entry and bulk citation tools copy or download formatted citations, BibTeX, and RIS.
+- Per-entry citation copying and bulk downloads in formatted citation, BibTeX, and RIS formats.
 - SHA-256 PDF auditing detects changed files and byte-identical duplicates.
 - Per-paper notes editor persisted to `METADATA/metadata.csv` (`notes` column).
 - A metadata-only entry form for printed papers or references without a local PDF.
@@ -152,7 +150,7 @@ python3 CODE/bib.py mark-pdf-host --host COMPUTER-NAME --all
   document types come from the catalog with an option to add a new type.
 - Catalog-management tools (create/edit entries, merge duplicates, and manage types)
   live on the separate `VIEWER/manage.html` page, linked from the main finder.
-- Save/load list support via `SAVED_LISTS/*.json`.
+- Saved Filter support via `SAVED_LISTS/*.json`.
 - Title click behavior:
   - Normal left-click opens the local `PDFs/{code}.pdf` file with `evince` (fallback `xdg-open`) through server endpoint `/open-pdf`.
   - Modified clicks (Ctrl/Cmd/Shift/Alt/middle-click) keep normal browser link behavior.
