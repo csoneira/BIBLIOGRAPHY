@@ -540,15 +540,21 @@ function updateResultSummary(rows) {
   const local = rows.filter((row) => row.pdf_status === "local").length;
   const remote = rows.filter((row) => row.pdf_status === "remote").length;
   const notAdded = rows.filter((row) => row.pdf_status === "not_added").length;
+  const totalLocal = fullCatalogRows.filter((row) => row.pdf_status === "local").length;
+  const totalRemote = fullCatalogRows.filter((row) => row.pdf_status === "remote").length;
+  const totalNotAdded = fullCatalogRows.filter((row) => row.pdf_status === "not_added").length;
+  const starred = rows.filter((row) => row.star === "1").length;
+  const unread = rows.filter((row) => row.unread === "1").length;
+  const totalStarred = fullCatalogRows.filter((row) => row.star === "1").length;
+  const totalUnread = fullCatalogRows.filter((row) => row.unread === "1").length;
   const excluded = Math.max(0, fullCatalogRows.length - rows.length);
   const counts = {
-    resultCountTotal: rows.length,
-    resultCountLocal: local,
-    resultCountRemote: remote,
-    resultCountNotAdded: notAdded,
-    resultCountStarred: rows.filter((row) => row.star === "1").length,
-    resultCountUnread: rows.filter((row) => row.unread === "1").length,
-    resultCountExcluded: excluded,
+    resultCountTotal: `${rows.length} / ${fullCatalogRows.length}`,
+    resultCountLocal: `${local} / ${totalLocal}`,
+    resultCountRemote: `${remote} / ${totalRemote}`,
+    resultCountNotAdded: `${notAdded} / ${totalNotAdded}`,
+    resultCountStarred: `${starred} / ${totalStarred}`,
+    resultCountUnread: `${unread} / ${totalUnread}`,
     resultBarIncluded: rows.length,
     resultBarExcluded: excluded,
   };

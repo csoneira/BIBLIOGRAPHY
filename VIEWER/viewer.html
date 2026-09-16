@@ -164,6 +164,12 @@
         margin: 0;
       }
 
+      .global-bar-block {
+        margin-bottom: 18px;
+        padding-bottom: 18px;
+        border-bottom: 1px solid #ddd5cd;
+      }
+
       .filtered-bar-caption {
         display: flex;
         justify-content: space-between;
@@ -648,22 +654,6 @@
       </div>
     </header>
 
-    <section class="dashboard" aria-label="Library summary">
-      <div class="library-bar-card">
-        <div class="library-total"><strong id="countTotal">–</strong><span>Total entries</span></div>
-        <div class="library-bar" id="libraryBar" role="img" aria-label="PDF availability">
-          <span class="library-bar-segment library-local" id="libraryLocalBar"></span>
-          <span class="library-bar-segment library-remote" id="libraryRemoteBar"></span>
-          <span class="library-bar-segment library-not-added" id="libraryNotAddedBar"></span>
-        </div>
-        <div class="library-legend">
-          <span class="library-legend-item"><span class="library-swatch library-local"></span><strong id="countLocal">–</strong>Local</span>
-          <span class="library-legend-item"><span class="library-swatch library-remote"></span><strong id="countRemote">–</strong>Remote</span>
-          <span class="library-legend-item"><span class="library-swatch library-not-added"></span><strong id="countNotAdded">–</strong>Not added</span>
-        </div>
-      </div>
-    </section>
-
     <section class="panel">
       <div class="saved-filter-bar">
         <div>
@@ -760,6 +750,19 @@
     </section>
 
     <section class="panel" aria-label="Filtered results overview">
+      <div class="global-bar-block">
+        <div class="library-total"><strong id="countTotal">–</strong><span>Total entries</span></div>
+        <div class="library-bar" id="libraryBar" role="img" aria-label="PDF availability">
+          <span class="library-bar-segment library-local" id="libraryLocalBar"></span>
+          <span class="library-bar-segment library-remote" id="libraryRemoteBar"></span>
+          <span class="library-bar-segment library-not-added" id="libraryNotAddedBar"></span>
+        </div>
+        <div class="library-legend">
+          <span class="library-legend-item"><span class="library-swatch library-local"></span><strong id="countLocal">–</strong>Local</span>
+          <span class="library-legend-item"><span class="library-swatch library-remote"></span><strong id="countRemote">–</strong>Remote</span>
+          <span class="library-legend-item"><span class="library-swatch library-not-added"></span><strong id="countNotAdded">–</strong>Not added</span>
+        </div>
+      </div>
       <div class="filtered-bar-block">
         <div class="filtered-bar-caption">
           <span><strong id="resultBarIncluded">–</strong> references shown</span>
@@ -773,13 +776,12 @@
         </div>
       </div>
       <div class="result-summary" aria-label="Current result summary">
-        <div class="result-summary-item"><strong id="resultCountTotal">–</strong>Results</div>
+        <div class="result-summary-item"><strong id="resultCountTotal">–</strong>References</div>
         <div class="result-summary-item local-result"><strong id="resultCountLocal">–</strong>Local</div>
         <div class="result-summary-item remote-result"><strong id="resultCountRemote">–</strong>Remote</div>
         <div class="result-summary-item not-added-result"><strong id="resultCountNotAdded">–</strong>Not added</div>
         <div class="result-summary-item"><strong id="resultCountStarred">–</strong>Starred</div>
         <div class="result-summary-item"><strong id="resultCountUnread">–</strong>Unread</div>
-        <div class="result-summary-item excluded-result"><strong id="resultCountExcluded">–</strong>Left out</div>
       </div>
       <div class="actions" aria-label="Actions for current results">
         <button class="secondary" id="saveViewBtn">Save filter</button>
