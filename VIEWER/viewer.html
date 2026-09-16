@@ -59,7 +59,7 @@
       .dashboard {
         margin: 0 10vw 24px;
         display: grid;
-        grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+        grid-template-columns: minmax(0, 1fr) auto;
         gap: 10px;
       }
 
@@ -82,6 +82,74 @@
         justify-content: center;
         gap: 8px;
         flex-wrap: wrap;
+      }
+
+      .library-bar-card {
+        padding: 14px 16px;
+        border-radius: 12px;
+        background: var(--card);
+        box-shadow: var(--shadow);
+      }
+
+      .library-total {
+        display: flex;
+        align-items: baseline;
+        gap: 8px;
+        margin-bottom: 10px;
+        color: var(--muted);
+      }
+
+      .library-total strong {
+        color: var(--accent);
+        font-size: 24px;
+      }
+
+      .library-bar {
+        display: flex;
+        width: 100%;
+        height: 16px;
+        overflow: hidden;
+        border-radius: 999px;
+        background: #dfe3e6;
+      }
+
+      .library-bar-segment {
+        min-width: 5px;
+        transition: flex-grow 0.25s ease;
+      }
+
+      .library-bar-segment[hidden] {
+        display: none;
+      }
+
+      .library-local { background: #3b8d5a; }
+      .library-remote { background: #3973a8; }
+      .library-not-added { background: #929ba2; }
+
+      .library-legend {
+        display: flex;
+        gap: 10px 20px;
+        flex-wrap: wrap;
+        margin-top: 10px;
+        color: var(--muted);
+        font-size: 13px;
+      }
+
+      .library-legend-item {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+      }
+
+      .library-legend-item strong {
+        color: var(--ink);
+        font-size: 15px;
+      }
+
+      .library-swatch {
+        width: 10px;
+        height: 10px;
+        border-radius: 3px;
       }
 
       .result-summary {
@@ -543,6 +611,9 @@
           grid-template-columns: 1fr;
           align-items: stretch;
         }
+        .dashboard {
+          grid-template-columns: 1fr;
+        }
       }
     </style>
   </head>
@@ -556,10 +627,19 @@
     </header>
 
     <section class="dashboard" aria-label="Library summary">
-      <div class="dashboard-item"><strong id="countTotal">–</strong>Total entries</div>
-      <div class="dashboard-item"><strong id="countLocal">–</strong>Local</div>
-      <div class="dashboard-item"><strong id="countRemote">–</strong>Remote</div>
-      <div class="dashboard-item"><strong id="countNotAdded">–</strong>Not added</div>
+      <div class="library-bar-card">
+        <div class="library-total"><strong id="countTotal">–</strong><span>Total entries</span></div>
+        <div class="library-bar" id="libraryBar" role="img" aria-label="PDF availability">
+          <span class="library-bar-segment library-local" id="libraryLocalBar"></span>
+          <span class="library-bar-segment library-remote" id="libraryRemoteBar"></span>
+          <span class="library-bar-segment library-not-added" id="libraryNotAddedBar"></span>
+        </div>
+        <div class="library-legend">
+          <span class="library-legend-item"><span class="library-swatch library-local"></span><strong id="countLocal">–</strong>Local</span>
+          <span class="library-legend-item"><span class="library-swatch library-remote"></span><strong id="countRemote">–</strong>Remote</span>
+          <span class="library-legend-item"><span class="library-swatch library-not-added"></span><strong id="countNotAdded">–</strong>Not added</span>
+        </div>
+      </div>
       <div class="dashboard-item dashboard-actions">
         <button class="secondary compact" id="undoBtn" type="button">Undo last change</button>
         <button class="secondary compact" id="auditBtn" type="button">Audit PDFs</button>

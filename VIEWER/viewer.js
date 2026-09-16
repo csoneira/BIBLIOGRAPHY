@@ -886,10 +886,26 @@ function resetEntryForm() {
 }
 
 function updateDashboard(rows) {
+  const local = rows.filter((row) => row.pdf_status === "local").length;
+  const remote = rows.filter((row) => row.pdf_status === "remote").length;
+  const notAdded = rows.filter((row) => row.pdf_status === "not_added").length;
   document.getElementById("countTotal").textContent = rows.length;
-  document.getElementById("countLocal").textContent = rows.filter((row) => row.pdf_status === "local").length;
-  document.getElementById("countRemote").textContent = rows.filter((row) => row.pdf_status === "remote").length;
-  document.getElementById("countNotAdded").textContent = rows.filter((row) => row.pdf_status === "not_added").length;
+  document.getElementById("countLocal").textContent = local;
+  document.getElementById("countRemote").textContent = remote;
+  document.getElementById("countNotAdded").textContent = notAdded;
+  [
+    ["libraryLocalBar", local],
+    ["libraryRemoteBar", remote],
+    ["libraryNotAddedBar", notAdded],
+  ].forEach(([id, count]) => {
+    const segment = document.getElementById(id);
+    segment.style.flexGrow = count;
+    segment.hidden = count === 0;
+  });
+  document.getElementById("libraryBar").setAttribute(
+    "aria-label",
+    `${rows.length} entries: ${local} local, ${remote} remote, ${notAdded} not added`,
+  );
 }
 
 function setFilters(filters = {}) {
