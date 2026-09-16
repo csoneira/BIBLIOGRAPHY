@@ -133,7 +133,7 @@ python3 CODE/bib.py mark-pdf-host --host COMPUTER-NAME --all
 - Local, Remote, and Not added badges and filtering. Local availability is checked live;
   Remote means another computer is recorded in `pdf_hosts`, while Not added means no PDF
   has been recorded anywhere yet.
-- Dashboard totals for local, remote, not-added, and multi-computer PDFs.
+- Dashboard totals for local, remote, and not-added PDFs, plus the number of recorded computers.
 - Edit and recoverable delete controls for every entry.
 - Attach a PDF directly to an existing entry; duplicate titles and DOIs are detected.
 - One-step Undo backed by automatic snapshots in `METADATA/backups/viewer_changes/`.

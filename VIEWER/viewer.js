@@ -890,9 +890,13 @@ function updateDashboard(rows) {
   document.getElementById("countLocal").textContent = rows.filter((row) => row.pdf_status === "local").length;
   document.getElementById("countRemote").textContent = rows.filter((row) => row.pdf_status === "remote").length;
   document.getElementById("countNotAdded").textContent = rows.filter((row) => row.pdf_status === "not_added").length;
-  document.getElementById("countMultiple").textContent = rows.filter(
-    (row) => (row.pdf_hosts || "").split(";").filter((host) => host.trim()).length > 1,
-  ).length;
+  const computers = new Set();
+  rows.forEach((row) => {
+    (row.pdf_hosts || "").split(";").forEach((host) => {
+      if (host.trim()) computers.add(host.trim());
+    });
+  });
+  document.getElementById("countComputers").textContent = computers.size;
 }
 
 function setFilters(filters = {}) {
