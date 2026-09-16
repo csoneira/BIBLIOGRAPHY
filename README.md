@@ -139,7 +139,8 @@ python3 CODE/bib.py mark-pdf-host --host COMPUTER-NAME --all
 - One-step Undo backed by automatic snapshots in `METADATA/backups/viewer_changes/`.
 - `last_viewed` discovery history, a 30-day exclusion filter, and a one-entry Surprise me action.
 - Saved lists restore their stored filter selections.
-- Dynamic saved views re-run their filters against the latest catalog, so future matching entries appear automatically.
+- Saved Filters re-run their conditions against the latest catalog, so future matching entries appear automatically;
+  Saved Reference Lists retain the exact references selected when they were saved.
 - Type rename/merge management; merging removes the unused old type from selectors.
 - Duplicate-entry merge combines metadata, abstracts, saved-list membership, and PDF files while remaining undoable.
 - DOI and arXiv lookup fills the entry form from Crossref or arXiv metadata.

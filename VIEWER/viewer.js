@@ -1002,7 +1002,7 @@ async function loadSavedLists() {
   select.innerHTML = "";
   const defaultOption = document.createElement("option");
   defaultOption.value = "";
-  defaultOption.textContent = "Select saved list";
+  defaultOption.textContent = "Select a saved reference list or filter";
   select.appendChild(defaultOption);
 
   try {
@@ -1015,7 +1015,7 @@ async function loadSavedLists() {
     lists.forEach((list) => {
       const option = document.createElement("option");
       option.value = list.filename;
-      option.textContent = `${list.dynamic ? "View" : "List"}: ${list.name || list.filename}`;
+      option.textContent = `${list.dynamic ? "Saved Filter" : "Saved Reference List"}: ${list.name || list.filename}`;
       select.appendChild(option);
     });
     return lists;
@@ -1051,12 +1051,12 @@ async function init() {
     document.getElementById("loadListBtn").addEventListener("click", () => {
       const selection = document.getElementById("savedList").value;
       if (!selection) {
-        alert("Pick a saved list first.");
+        alert("Pick a saved reference list or saved filter first.");
         return;
       }
       const selectedList = savedLists.find((list) => list.filename === selection);
       if (!selectedList) {
-        alert("Saved list not found. Refresh the page.");
+        alert("The saved reference list or filter was not found. Refresh the page.");
         return;
       }
       setFilters(selectedList.filters || {});
@@ -1212,7 +1212,7 @@ async function init() {
         alert("No results to save.");
         return;
       }
-      const name = prompt("Name for this list (saved to download):");
+      const name = prompt("Name for this saved reference list:");
       if (!name) {
         return;
       }
@@ -1225,14 +1225,14 @@ async function init() {
     });
 
     document.getElementById("saveViewBtn").addEventListener("click", async () => {
-      const name = prompt("Name for this dynamic view:");
+      const name = prompt("Name for this saved filter:");
       if (!name) return;
       try {
         await saveListToServer(name.trim(), [], getFilters(), true);
-        alert("Dynamic view saved. It will include future entries that match these filters.");
+        alert("Filter saved. It will include future entries that match these conditions.");
         window.location.reload();
       } catch (err) {
-        alert("Could not save the dynamic view.");
+        alert("Could not save the filter.");
       }
     });
 
