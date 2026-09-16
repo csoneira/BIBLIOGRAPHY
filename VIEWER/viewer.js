@@ -104,6 +104,16 @@ function publicationDateRange(row) {
   return null;
 }
 
+function matchesTextQuery(value, query) {
+  const text = String(value || "").toLocaleLowerCase();
+  const terms = String(query || "")
+    .toLocaleLowerCase()
+    .split(/[;,]/)
+    .map((term) => term.trim())
+    .filter(Boolean);
+  return !terms.length || terms.every((term) => text.includes(term));
+}
+
 function applyFilters(rows, filters) {
   return rows.filter((row) => {
     const publicationRange = publicationDateRange(row);
@@ -121,7 +131,7 @@ function applyFilters(rows, filters) {
     if (filters.types.length && !filters.types.includes(typeValue)) {
       return false;
     }
-    if (filters.title && !(row.title || "").toLowerCase().includes(filters.title)) {
+    if (filters.title && !matchesTextQuery(row.title, filters.title)) {
       return false;
     }
     if (filters.starOnly && starValue !== "1") {
@@ -133,16 +143,16 @@ function applyFilters(rows, filters) {
     if (filters.location && row.pdf_status !== filters.location) {
       return false;
     }
-    if (filters.journal && !(row.journal || "").toLowerCase().includes(filters.journal)) {
+    if (filters.journal && !matchesTextQuery(row.journal, filters.journal)) {
       return false;
     }
-    if (filters.keyword && !(row.keywords || "").toLowerCase().includes(filters.keyword)) {
+    if (filters.keyword && !matchesTextQuery(row.keywords, filters.keyword)) {
       return false;
     }
-    if (filters.myKeyword && !(row.my_keywords || "").toLowerCase().includes(filters.myKeyword)) {
+    if (filters.myKeyword && !matchesTextQuery(row.my_keywords, filters.myKeyword)) {
       return false;
     }
-    if (filters.abstract && !(row.abstract || "").toLowerCase().includes(filters.abstract)) {
+    if (filters.abstract && !matchesTextQuery(row.abstract, filters.abstract)) {
       return false;
     }
     if (filters.addedFrom) {
