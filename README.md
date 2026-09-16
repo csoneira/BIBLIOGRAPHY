@@ -149,6 +149,8 @@ python3 CODE/bib.py mark-pdf-host --host COMPUTER-NAME --all
 - A metadata-only entry form for printed papers or references without a local PDF.
   Its publication month is optional, an exact day can be included when known, and
   document types come from the catalog with an option to add a new type.
+- Catalog-management tools (create/edit entries, merge duplicates, and manage types)
+  live on the separate `VIEWER/manage.html` page, linked from the main finder.
 - Save/load list support via `SAVED_LISTS/*.json`.
 - Title click behavior:
   - Normal left-click opens the local `PDFs/{code}.pdf` file with `evince` (fallback `xdg-open`) through server endpoint `/open-pdf`.

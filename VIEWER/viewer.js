@@ -391,7 +391,9 @@ function renderResults(rows) {
       const editButton = document.createElement("button");
       editButton.className = "secondary compact";
       editButton.textContent = "Edit";
-      editButton.addEventListener("click", () => startEditingEntry(row));
+      editButton.addEventListener("click", () => {
+        window.location.href = `manage.html?edit=${encodeURIComponent(row.code)}`;
+      });
       manageActions.appendChild(editButton);
 
       const citeButton = document.createElement("button");
@@ -1012,11 +1014,6 @@ async function init() {
     const savedLists = await loadSavedLists();
     let filteredRows = rows;
     setupFilterTypeOptions(rows);
-    setupEntryTypeOptions(rows);
-    setupTypeManager(rows);
-    setupEntryMergeOptions(rows);
-    setupPublicationDateInputs();
-    resetEntryForm();
     updateDashboard(rows);
     renderResults(rows);
 
@@ -1098,7 +1095,7 @@ async function init() {
       }
     });
 
-    document.getElementById("lookupBtn").addEventListener("click", async () => {
+    if (document.getElementById("lookupBtn")) document.getElementById("lookupBtn").addEventListener("click", async () => {
       const identifier = document.getElementById("entryLookup").value.trim();
       const status = document.getElementById("entryStatus");
       if (!identifier) {
@@ -1130,7 +1127,7 @@ async function init() {
       }
     });
 
-    document.getElementById("mergeEntriesBtn").addEventListener("click", async () => {
+    if (document.getElementById("mergeEntriesBtn")) document.getElementById("mergeEntriesBtn").addEventListener("click", async () => {
       const source = document.getElementById("mergeSource").value.trim();
       const target = document.getElementById("mergeTarget").value.trim();
       if (!source || !target || source === target) {
@@ -1154,7 +1151,7 @@ async function init() {
       }
     });
 
-    document.getElementById("cancelEditBtn").addEventListener("click", resetEntryForm);
+    document.getElementById("cancelEditBtn")?.addEventListener("click", resetEntryForm);
 
     document.getElementById("pdfUpload").addEventListener("change", async (event) => {
       const file = event.target.files[0];
@@ -1171,7 +1168,7 @@ async function init() {
       }
     });
 
-    document.getElementById("manageTypeBtn").addEventListener("click", async () => {
+    if (document.getElementById("manageTypeBtn")) document.getElementById("manageTypeBtn").addEventListener("click", async () => {
       const source = document.getElementById("manageTypeSource").value;
       const target = document.getElementById("manageTypeTarget").value.trim();
       const status = document.getElementById("manageTypeStatus");
@@ -1250,7 +1247,7 @@ async function init() {
       URL.revokeObjectURL(link.href);
     });
 
-    document.getElementById("entryForm").addEventListener("submit", async (event) => {
+    if (document.getElementById("entryForm")) document.getElementById("entryForm").addEventListener("submit", async (event) => {
       event.preventDefault();
       const button = document.getElementById("createEntryBtn");
       const status = document.getElementById("entryStatus");

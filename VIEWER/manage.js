@@ -1,0 +1,293 @@
+function parseCsv(text) {
+  const rows = [];
+  let row = [], value = "", quoted = false;
+  for (let index = 0; index < text.length; index += 1) {
+    const char = text[index];
+    if (char === '"') {
+      if (quoted && text[index + 1] === '"') { value += '"'; index += 1; }
+      else quoted = !quoted;
+    } else if (char === "," && !quoted) {
+      row.push(value); value = "";
+    } else if ((char === "\n" || char === "\r") && !quoted) {
+      if (value || row.length) { row.push(value); rows.push(row); row = []; value = ""; }
+    } else value += char;
+  }
+  if (value || row.length) { row.push(value); rows.push(row); }
+  return rows;
+}
+
+function csvRows(text) {
+  const parsed = parseCsv(text);
+  if (!parsed.length) return [];
+  const headers = parsed[0].map((value) => value.trim());
+  return parsed.slice(1).map((values) => Object.fromEntries(
+    headers.map((header, index) => [header, (values[index] || "").trim()]),
+  ));
+}
+
+function freshUrl(url) {
+  return `${url}${url.includes("?") ? "&" : "?"}t=${Date.now()}`;
+}
+
+async function postJson(url, payload) {
+  const response = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+    cache: "no-store",
+  });
+  const contentType = response.headers.get("Content-Type") || "";
+  const data = contentType.includes("application/json")
+    ? await response.json()
+    : { error: await response.text() };
+  if (!response.ok) {
+    const error = new Error(data.error || `Request failed (${response.status})`);
+    error.status = response.status;
+    error.duplicates = data.duplicates || [];
+    throw error;
+  }
+  return data;
+}
+
+function catalogTypes(rows) {
+  return [...new Set(rows.map((row) => (row.type || "").trim()).filter(Boolean))]
+    .sort((a, b) => a.localeCompare(b));
+}
+
+function setupTypes(rows) {
+  const types = catalogTypes(rows);
+  const entryType = document.getElementById("entryType");
+  const source = document.getElementById("manageTypeSource");
+  const known = document.getElementById("knownTypes");
+  [entryType, source, known].forEach((element) => { element.innerHTML = ""; });
+  types.forEach((type) => {
+    entryType.add(new Option(type, type));
+    source.add(new Option(type, type));
+    const suggestion = document.createElement("option");
+    suggestion.value = type;
+    known.appendChild(suggestion);
+  });
+  entryType.add(new Option("+ Add new type…", "__new__"));
+  entryType.value = types.includes("article") ? "article" : (types[0] || "__new__");
+  entryType.addEventListener("change", updateNewTypeVisibility);
+  updateNewTypeVisibility();
+}
+
+function updateNewTypeVisibility() {
+  const adding = document.getElementById("entryType").value === "__new__";
+  document.getElementById("entryNewTypeContainer").hidden = !adding;
+  document.getElementById("entryNewType").required = adding;
+}
+
+function setupEntries(rows) {
+  const list = document.getElementById("knownEntries");
+  rows.forEach((row) => {
+    const option = document.createElement("option");
+    option.value = row.code;
+    option.label = row.title || row.code;
+    list.appendChild(option);
+  });
+}
+
+function setPublicationDate(value) {
+  const parts = (value || "").split("-");
+  const month = document.getElementById("entryPublicationMonth");
+  const day = document.getElementById("entryPublicationDay");
+  month.value = parts.length >= 2 ? `${parts[0]}-${parts[1]}` : "";
+  day.disabled = !month.value;
+  day.value = parts.length === 3 ? String(parseInt(parts[2], 10)) : "";
+}
+
+function resetForm(clearUrl = true) {
+  const form = document.getElementById("entryForm");
+  form.reset();
+  form.dataset.mode = "create";
+  form.dataset.legacyYear = "";
+  document.getElementById("entryCode").value = "";
+  document.getElementById("entryFormTitle").textContent = "Create a metadata-only entry";
+  document.getElementById("createEntryBtn").textContent = "Create entry";
+  document.getElementById("cancelEditBtn").hidden = true;
+  document.getElementById("entryPdfHostsContainer").hidden = true;
+  document.getElementById("entryStatus").textContent = "";
+  document.getElementById("entryUnread").checked = true;
+  const types = document.getElementById("entryType");
+  if ([...types.options].some((option) => option.value === "article")) types.value = "article";
+  setPublicationDate("");
+  updateNewTypeVisibility();
+  if (clearUrl) history.replaceState({}, "", "manage.html");
+}
+
+function editEntry(row) {
+  const form = document.getElementById("entryForm");
+  form.dataset.mode = "edit";
+  form.dataset.legacyYear = row.publication_date ? "" : (row.year || "");
+  document.getElementById("entryCode").value = row.code;
+  document.getElementById("entryTitle").value = row.title || "";
+  setPublicationDate(row.publication_date || "");
+  const type = document.getElementById("entryType");
+  if ([...type.options].some((option) => option.value === row.type)) type.value = row.type;
+  document.getElementById("entryAuthor").value = row.author || "";
+  document.getElementById("entryJournal").value = row.journal || "";
+  document.getElementById("entryDoi").value = row.doi || "";
+  document.getElementById("entryKeywords").value = row.keywords || "";
+  document.getElementById("entryMyKeywords").value = row.my_keywords || "";
+  document.getElementById("entryAbstract").value = row.abstract || "";
+  document.getElementById("entryNotes").value = row.notes || "";
+  document.getElementById("entryUnread").checked = row.unread === "1";
+  document.getElementById("entryStar").checked = row.star === "1";
+  document.getElementById("entryPdfHosts").value = row.pdf_hosts || "";
+  document.getElementById("entryPdfHostsContainer").hidden = false;
+  document.getElementById("cancelEditBtn").hidden = false;
+  document.getElementById("entryFormTitle").textContent = `Edit: ${row.title || row.code}`;
+  document.getElementById("createEntryBtn").textContent = "Save changes";
+  updateNewTypeVisibility();
+}
+
+async function loadRows() {
+  const [metadataResponse, abstractsResponse] = await Promise.all([
+    fetch(freshUrl("../METADATA/metadata.csv"), { cache: "no-store" }),
+    fetch(freshUrl("/abstracts"), { cache: "no-store" }),
+  ]);
+  if (!metadataResponse.ok) throw new Error("metadata.csv could not be loaded");
+  const rows = csvRows(await metadataResponse.text());
+  const abstracts = abstractsResponse.ok ? (await abstractsResponse.json()).abstracts || {} : {};
+  rows.forEach((row) => { row.abstract = abstracts[row.code] || ""; });
+  return rows;
+}
+
+async function init() {
+  try {
+    const rows = await loadRows();
+    const editCode = new URLSearchParams(location.search).get("edit");
+    setupTypes(rows);
+    setupEntries(rows);
+    resetForm(false);
+
+    if (editCode) {
+      const row = rows.find((item) => item.code === editCode);
+      if (row) editEntry(row);
+    }
+
+    document.getElementById("entryPublicationMonth").addEventListener("input", (event) => {
+      const day = document.getElementById("entryPublicationDay");
+      day.disabled = !event.target.value;
+      if (day.disabled) day.value = "";
+    });
+    document.getElementById("cancelEditBtn").addEventListener("click", () => resetForm(true));
+
+    document.getElementById("undoBtn").addEventListener("click", async () => {
+      if (!confirm("Undo the most recent viewer change?")) return;
+      try {
+        const result = await postJson("/undo-last-change", {});
+        alert(`Undid: ${result.action}`);
+        location.reload();
+      } catch (error) { alert(error.message); }
+    });
+
+    document.getElementById("lookupBtn").addEventListener("click", async () => {
+      const identifier = document.getElementById("entryLookup").value.trim();
+      const status = document.getElementById("entryStatus");
+      if (!identifier) { alert("Enter a DOI or arXiv identifier first."); return; }
+      status.textContent = "Looking up metadata…";
+      try {
+        const item = await postJson("/lookup-reference", { identifier });
+        document.getElementById("entryTitle").value = item.title || "";
+        document.getElementById("entryAuthor").value = item.author || "";
+        document.getElementById("entryJournal").value = item.journal || "";
+        document.getElementById("entryDoi").value = item.doi || "";
+        document.getElementById("entryAbstract").value = item.abstract || "";
+        setPublicationDate(item.publication_date || "");
+        const type = document.getElementById("entryType");
+        if ([...type.options].some((option) => option.value === item.type)) type.value = item.type;
+        else {
+          type.value = "__new__";
+          document.getElementById("entryNewType").value = item.type || "article";
+        }
+        updateNewTypeVisibility();
+        status.textContent = `Filled from ${item.source}`;
+      } catch (error) { status.textContent = "Lookup failed"; alert(error.message); }
+    });
+
+    document.getElementById("entryForm").addEventListener("submit", async (event) => {
+      event.preventDefault();
+      const form = event.currentTarget;
+      const button = document.getElementById("createEntryBtn");
+      const status = document.getElementById("entryStatus");
+      const month = document.getElementById("entryPublicationMonth").value;
+      const day = document.getElementById("entryPublicationDay").value;
+      const selectedType = document.getElementById("entryType").value;
+      const payload = {
+        code: document.getElementById("entryCode").value,
+        title: document.getElementById("entryTitle").value,
+        publication_date: month && day ? `${month}-${day.padStart(2, "0")}` : month,
+        year: form.dataset.legacyYear || "",
+        type: selectedType === "__new__" ? document.getElementById("entryNewType").value : selectedType,
+        author: document.getElementById("entryAuthor").value,
+        journal: document.getElementById("entryJournal").value,
+        doi: document.getElementById("entryDoi").value,
+        keywords: document.getElementById("entryKeywords").value,
+        my_keywords: document.getElementById("entryMyKeywords").value,
+        abstract: document.getElementById("entryAbstract").value,
+        notes: document.getElementById("entryNotes").value,
+        unread: document.getElementById("entryUnread").checked,
+        star: document.getElementById("entryStar").checked,
+      };
+      if (form.dataset.mode === "edit") payload.pdf_hosts = document.getElementById("entryPdfHosts").value;
+      button.disabled = true;
+      status.textContent = "Saving…";
+      const editing = form.dataset.mode === "edit";
+      try {
+        let saved;
+        try {
+          saved = await postJson(editing ? "/update-entry" : "/create-entry", payload);
+        } catch (error) {
+          if (error.status !== 409 || !error.duplicates.length) throw error;
+          const names = error.duplicates.map((item) => item.title || item.code).join("\n");
+          if (!confirm(`Possible duplicate found:\n${names}\n\nSave anyway?`)) {
+            status.textContent = "Cancelled: possible duplicate";
+            button.disabled = false;
+            return;
+          }
+          payload.allow_duplicate = true;
+          saved = await postJson(editing ? "/update-entry" : "/create-entry", payload);
+        }
+        status.textContent = `${editing ? "Updated" : "Created"} ${saved.code}`;
+        window.setTimeout(() => { location.href = `manage.html?edit=${encodeURIComponent(saved.code)}`; }, 500);
+      } catch (error) {
+        status.textContent = "Save failed";
+        alert(error.message);
+        button.disabled = false;
+      }
+    });
+
+    document.getElementById("mergeEntriesBtn").addEventListener("click", async () => {
+      const source = document.getElementById("mergeSource").value.trim();
+      const target = document.getElementById("mergeTarget").value.trim();
+      const sourceRow = rows.find((row) => row.code === source);
+      const targetRow = rows.find((row) => row.code === target);
+      if (!sourceRow || !targetRow || source === target) { alert("Choose two different entries from the suggestions."); return; }
+      if (!confirm(`Merge “${sourceRow.title}” into “${targetRow.title}”? The second entry will be kept.`)) return;
+      try {
+        await postJson("/merge-entries", { source, target });
+        document.getElementById("mergeEntriesStatus").textContent = "Merged successfully";
+        window.setTimeout(() => location.reload(), 500);
+      } catch (error) { document.getElementById("mergeEntriesStatus").textContent = "Merge failed"; alert(error.message); }
+    });
+
+    document.getElementById("manageTypeBtn").addEventListener("click", async () => {
+      const source = document.getElementById("manageTypeSource").value;
+      const target = document.getElementById("manageTypeTarget").value.trim();
+      if (!source || !target) { alert("Choose an existing type and its destination type."); return; }
+      if (!confirm(`Change every “${source}” entry to “${target}”?`)) return;
+      try {
+        const result = await postJson("/manage-type", { action: "merge", source, target });
+        document.getElementById("manageTypeStatus").textContent = `Updated ${result.updated} entries`;
+        window.setTimeout(() => location.reload(), 500);
+      } catch (error) { document.getElementById("manageTypeStatus").textContent = "Change failed"; alert(error.message); }
+    });
+  } catch (error) {
+    document.getElementById("entryStatus").textContent = error.message;
+  }
+}
+
+init();

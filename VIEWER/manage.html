@@ -1,0 +1,111 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta http-equiv="Cache-Control" content="no-store" />
+    <title>Manage Bibliography</title>
+    <style>
+      :root { --bg:#f8f4ef; --ink:#1f2428; --muted:#5f6a6f; --accent:#1e4f7a; --card:#ffffffdd; --shadow:0 12px 30px rgba(31,36,40,.12); }
+      * { box-sizing:border-box; }
+      body { margin:0; min-height:100vh; color:var(--ink); background:radial-gradient(circle at top,#fff6e8,var(--bg) 40%) fixed; font-family:"Palatino Linotype","Book Antiqua",Palatino,serif; }
+      header, main { width:min(1100px,88vw); margin:0 auto; }
+      header { padding:32px 0 20px; }
+      h1 { margin:0 0 6px; font-size:clamp(28px,3vw,40px); }
+      p { color:var(--muted); }
+      a { color:var(--accent); }
+      nav { display:flex; gap:10px; align-items:center; margin-top:16px; }
+      .panel { margin-bottom:20px; padding:20px; border-radius:16px; background:var(--card); box-shadow:var(--shadow); }
+      summary { color:var(--accent); cursor:pointer; font-size:18px; font-weight:600; }
+      .grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); gap:12px; margin-top:16px; }
+      .wide { grid-column:1/-1; }
+      label { display:block; margin-bottom:6px; color:var(--muted); font-size:13px; }
+      input, select, textarea { width:100%; padding:10px 12px; border:1px solid #d6d6d6; border-radius:10px; background:#fff; font:inherit; }
+      textarea { min-height:90px; resize:vertical; }
+      .inline { display:flex; gap:8px; }
+      .inline input { flex:1; }
+      .actions { display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin-top:16px; }
+      .checks { display:flex; gap:18px; }
+      .checks label { display:flex; align-items:center; gap:6px; margin:0; }
+      .checks input { width:auto; }
+      button { border:0; padding:10px 18px; border-radius:999px; cursor:pointer; font:inherit; font-size:14px; }
+      .primary { background:var(--accent); color:#fff; }
+      .secondary { background:#e2e6ea; color:var(--ink); }
+      .danger { background:#f9e4e1; color:#8a2417; border:1px solid #e8b8b1; }
+      .status { color:var(--muted); font-size:13px; }
+      [hidden] { display:none !important; }
+      @media (max-width:720px) { header, main { width:88vw; } .inline { flex-direction:column; } }
+    </style>
+  </head>
+  <body>
+    <header>
+      <h1>Manage Bibliography</h1>
+      <p>Create and edit catalog entries, merge duplicates, and maintain document types.</p>
+      <nav>
+        <a href="viewer.html">← Back to finder and annotator</a>
+        <button class="secondary" id="undoBtn" type="button">Undo last change</button>
+      </nav>
+    </header>
+
+    <main>
+      <details class="panel" id="entryPanel" open>
+        <summary id="entryFormTitle">Create a metadata-only entry</summary>
+        <form id="entryForm">
+          <input id="entryCode" type="hidden" />
+          <div class="grid">
+            <div class="wide">
+              <label for="entryLookup">Fill from DOI or arXiv</label>
+              <div class="inline">
+                <input id="entryLookup" type="text" placeholder="10.xxxx/... or arXiv:2401.12345" />
+                <button class="secondary" id="lookupBtn" type="button">Look up</button>
+              </div>
+            </div>
+            <div><label for="entryTitle">Title *</label><input id="entryTitle" required /></div>
+            <div><label for="entryPublicationMonth">Publication month</label><input id="entryPublicationMonth" type="month" /></div>
+            <div><label for="entryPublicationDay">Day (optional)</label><input id="entryPublicationDay" type="number" min="1" max="31" disabled /></div>
+            <div><label for="entryType">Type *</label><select id="entryType" required></select></div>
+            <div id="entryNewTypeContainer" hidden><label for="entryNewType">New type *</label><input id="entryNewType" /></div>
+            <div><label for="entryAuthor">Author(s)</label><input id="entryAuthor" /></div>
+            <div><label for="entryJournal">Journal</label><input id="entryJournal" /></div>
+            <div><label for="entryDoi">DOI</label><input id="entryDoi" placeholder="10.xxxx/..." /></div>
+            <div><label for="entryKeywords">Keywords</label><input id="entryKeywords" /></div>
+            <div><label for="entryMyKeywords">My keywords</label><input id="entryMyKeywords" /></div>
+            <div id="entryPdfHostsContainer" hidden><label for="entryPdfHosts">PDF computers</label><input id="entryPdfHosts" placeholder="naranjito; manzanita" /></div>
+            <div class="wide"><label for="entryAbstract">Abstract</label><textarea id="entryAbstract"></textarea></div>
+            <div class="wide"><label for="entryNotes">Notes</label><textarea id="entryNotes"></textarea></div>
+          </div>
+          <div class="actions">
+            <div class="checks">
+              <label><input id="entryUnread" type="checkbox" checked /> Unread</label>
+              <label><input id="entryStar" type="checkbox" /> Starred</label>
+            </div>
+            <button class="primary" id="createEntryBtn" type="submit">Create entry</button>
+            <button class="secondary" id="cancelEditBtn" type="button" hidden>Cancel edit</button>
+            <span class="status" id="entryStatus"></span>
+          </div>
+        </form>
+      </details>
+
+      <details class="panel">
+        <summary>Merge duplicate entries</summary>
+        <div class="grid">
+          <div><label for="mergeSource">Duplicate to remove</label><input id="mergeSource" list="knownEntries" placeholder="Select its exact code" /></div>
+          <div><label for="mergeTarget">Entry to keep</label><input id="mergeTarget" list="knownEntries" placeholder="Select its exact code" /><datalist id="knownEntries"></datalist></div>
+        </div>
+        <div class="actions"><button class="danger" id="mergeEntriesBtn" type="button">Merge entries</button><span class="status" id="mergeEntriesStatus"></span></div>
+        <p>The destination keeps its existing values. Missing metadata, abstracts, PDF locations, and files are combined, and the operation can be undone.</p>
+      </details>
+
+      <details class="panel">
+        <summary>Manage document types</summary>
+        <div class="grid">
+          <div><label for="manageTypeSource">Existing type</label><select id="manageTypeSource"></select></div>
+          <div><label for="manageTypeTarget">Rename or merge into</label><input id="manageTypeTarget" list="knownTypes" placeholder="existing or new type" /><datalist id="knownTypes"></datalist></div>
+        </div>
+        <div class="actions"><button class="primary" id="manageTypeBtn" type="button">Rename / merge type</button><span class="status" id="manageTypeStatus"></span></div>
+        <p>Renaming to an existing type merges the two types throughout the catalog.</p>
+      </details>
+    </main>
+    <script src="manage.js"></script>
+  </body>
+</html>
