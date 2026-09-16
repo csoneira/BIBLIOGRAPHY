@@ -119,6 +119,7 @@ function resetForm(clearUrl = true) {
 
 function editEntry(row) {
   const form = document.getElementById("entryForm");
+  document.getElementById("entryPanel").open = true;
   form.dataset.mode = "edit";
   form.dataset.legacyYear = row.publication_date ? "" : (row.year || "");
   document.getElementById("entryCode").value = row.code;
