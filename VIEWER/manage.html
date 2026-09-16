@@ -37,6 +37,13 @@
       .secondary { background:#e2e6ea; color:var(--ink); }
       .danger { background:#f9e4e1; color:#8a2417; border:1px solid #e8b8b1; }
       .status { color:var(--muted); font-size:13px; }
+      .history-list { display:grid; gap:8px; margin-top:16px; }
+      .history-item { display:flex; justify-content:space-between; align-items:center; gap:16px; padding:10px 12px; border-radius:10px; background:#fff; border:1px solid #e2ded9; }
+      .history-item strong { display:block; color:var(--ink); font-size:14px; }
+      .history-item time { color:var(--muted); font-size:12px; }
+      .history-state { flex:none; padding:4px 8px; border-radius:999px; background:#e3f0e7; color:#28633c; font-size:12px; }
+      .history-state.undone { background:#e5e8ea; color:#687177; }
+      .history-empty { margin-top:16px; color:var(--muted); }
       .wallpaper-options { display:grid; grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); gap:14px; margin-top:16px; }
       .wallpaper-option { margin:0; padding:10px; border:1px solid #d6d6d6; border-radius:12px; background:#fff; color:var(--ink); cursor:pointer; }
       .wallpaper-option:has(input:checked) { border-color:var(--accent); box-shadow:0 0 0 2px rgba(30,79,122,.18); }
@@ -67,12 +74,21 @@
     <main>
       <section class="panel" aria-labelledby="maintenanceTitle">
         <h2 id="maintenanceTitle">Maintenance</h2>
-        <p>Check local PDF integrity or reverse the most recent change made through the viewer.</p>
+        <p>Check the integrity of PDFs stored on this computer.</p>
         <div class="actions">
-          <button class="secondary" id="undoBtn" type="button">Undo last change</button>
           <button class="secondary" id="auditBtn" type="button">Audit PDFs</button>
         </div>
       </section>
+
+      <details class="panel">
+        <summary>Change history</summary>
+        <div class="history-list" id="changeHistoryList"></div>
+        <p class="history-empty" id="changeHistoryEmpty" hidden>No viewer changes have been recorded yet.</p>
+        <div class="actions">
+          <button class="secondary" id="undoBtn" type="button">Undo latest change</button>
+          <span class="status" id="undoStatus"></span>
+        </div>
+      </details>
 
       <details class="panel">
         <summary>Wallpaper</summary>

@@ -204,6 +204,43 @@ async function loadKeywordConfig() {
   return response.json();
 }
 
+async function loadChangeHistory() {
+  const response = await fetch(freshUrl("/change-history"), { cache: "no-store" });
+  if (!response.ok) throw new Error("Change history could not be loaded");
+  return (await response.json()).history || [];
+}
+
+function setupChangeHistory(items) {
+  const list = document.getElementById("changeHistoryList");
+  const empty = document.getElementById("changeHistoryEmpty");
+  const undoButton = document.getElementById("undoBtn");
+  list.innerHTML = "";
+  empty.hidden = items.length > 0;
+  items.forEach((item) => {
+    const row = document.createElement("div");
+    row.className = "history-item";
+    const description = document.createElement("div");
+    const action = document.createElement("strong");
+    action.textContent = item.action
+      ? `${item.action.charAt(0).toUpperCase()}${item.action.slice(1)}`
+      : "Change";
+    const time = document.createElement("time");
+    const parsedDate = new Date(item.created_at);
+    time.textContent = Number.isNaN(parsedDate.getTime())
+      ? item.created_at
+      : parsedDate.toLocaleString();
+    const state = document.createElement("span");
+    state.className = `history-state${item.status === "undone" ? " undone" : ""}`;
+    state.textContent = item.status === "undone"
+      ? "Undone"
+      : (item.undoable ? "Latest · can undo" : "Applied");
+    description.append(action, time);
+    row.append(description, state);
+    list.appendChild(row);
+  });
+  undoButton.disabled = !items.some((item) => item.undoable);
+}
+
 function setupSavedFilterManager(filters) {
   const select = document.getElementById("savedFilterSelect");
   const nameInput = document.getElementById("savedFilterName");
@@ -288,13 +325,14 @@ async function setupWallpaperOptions() {
 
 async function init() {
   try {
-    const [rows, savedFilters, keywordConfig] = await Promise.all([
-      loadRows(), loadSavedFilters(), loadKeywordConfig(),
+    const [rows, savedFilters, keywordConfig, changeHistory] = await Promise.all([
+      loadRows(), loadSavedFilters(), loadKeywordConfig(), loadChangeHistory(),
     ]);
     const editCode = new URLSearchParams(location.search).get("edit");
     setupTypes(rows);
     setupEntries(rows);
     setupMyKeywords(rows, keywordConfig);
+    setupChangeHistory(changeHistory);
     setupSavedFilterManager(savedFilters);
     await setupWallpaperOptions();
     resetForm(false);
@@ -313,11 +351,13 @@ async function init() {
 
     document.getElementById("undoBtn").addEventListener("click", async () => {
       if (!confirm("Undo the most recent viewer change?")) return;
+      const status = document.getElementById("undoStatus");
+      status.textContent = "Undoing…";
       try {
         const result = await postJson("/undo-last-change", {});
-        alert(`Undid: ${result.action}`);
+        status.textContent = `Undid: ${result.action}`;
         location.reload();
-      } catch (error) { alert(error.message); }
+      } catch (error) { status.textContent = "Undo failed"; alert(error.message); }
     });
 
     document.getElementById("auditBtn").addEventListener("click", async () => {

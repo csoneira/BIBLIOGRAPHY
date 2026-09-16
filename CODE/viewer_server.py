@@ -109,7 +109,7 @@ def update_snapshot_manifest(snapshot: Path, **updates) -> None:
 
 def discard_snapshot(snapshot: Path) -> None:
     if snapshot.exists():
-        snapshot.rename(snapshot.with_name(f"{snapshot.name}.restored"))
+        snapshot.rename(snapshot.with_name(f"{snapshot.name}.discarded"))
 
 
 def list_change_snapshots() -> list:
@@ -119,7 +119,48 @@ def list_change_snapshots() -> list:
         path
         for path in CHANGE_BACKUP_DIR.glob("change-*")
         if path.is_dir() and not path.name.endswith(".restored")
+        and not path.name.endswith(".discarded")
     )
+
+
+def change_history(limit: int = 20) -> list:
+    if not CHANGE_BACKUP_DIR.exists():
+        return []
+    active = list_change_snapshots()
+    latest = active[-1] if active else None
+    history = []
+    paths = sorted(
+        (
+            path for path in CHANGE_BACKUP_DIR.glob("change-*")
+            if path.is_dir() and not path.name.endswith(".discarded")
+        ),
+        reverse=True,
+    )
+    for path in paths[:limit]:
+        manifest_path = path / "manifest.json"
+        if not manifest_path.exists():
+            continue
+        try:
+            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        except json.JSONDecodeError:
+            continue
+        stamp = str(manifest.get("created_at") or "")
+        try:
+            created_at = datetime.strptime(stamp, "%Y%m%dT%H%M%S%fZ").replace(
+                tzinfo=timezone.utc
+            ).isoformat().replace("+00:00", "Z")
+        except ValueError:
+            created_at = stamp
+        undone = path.name.endswith(".restored")
+        history.append(
+            {
+                "action": str(manifest.get("action") or "Change"),
+                "created_at": created_at,
+                "status": "undone" if undone else "applied",
+                "undoable": path == latest,
+            }
+        )
+    return history
 
 
 def undo_last_change() -> dict:
@@ -814,6 +855,7 @@ class Handler(SimpleHTTPRequestHandler):
                 "/abstract",
                 "/pdf-status",
                 "/pdf-audit",
+                "/change-history",
                 "/wallpapers",
                 "/save-list",
                 "/save-filter",
@@ -867,6 +909,9 @@ class Handler(SimpleHTTPRequestHandler):
             return
         if parsed.path == "/pdf-audit":
             self._handle_pdf_audit()
+            return
+        if parsed.path == "/change-history":
+            self._send_json({"history": change_history()})
             return
         if parsed.path == "/wallpapers":
             self._send_json({"custom": list_custom_wallpapers()})

@@ -161,6 +161,10 @@ class TestCreateMetadataEntry(unittest.TestCase):
             server.create_change_snapshot("test edit")
             server.update_metadata_entry({**original, "title": "Changed"})
             config_file.write_text('{"my_keywords": []}', encoding="utf-8")
+            history = server.change_history()
+            self.assertEqual(history[0]["action"], "test edit")
+            self.assertEqual(history[0]["status"], "applied")
+            self.assertTrue(history[0]["undoable"])
             result = server.undo_last_change()
             self.assertEqual(result["action"], "test edit")
             self.assertEqual(server.load_metadata_rows()[0]["title"], "Original")
@@ -168,6 +172,9 @@ class TestCreateMetadataEntry(unittest.TestCase):
                 json.loads(config_file.read_text(encoding="utf-8"))["my_keywords"][0]["tag"],
                 "original",
             )
+            history = server.change_history()
+            self.assertEqual(history[0]["status"], "undone")
+            self.assertFalse(history[0]["undoable"])
 
     def test_undo_reverses_created_and_trashed_pdf_moves(self):
         repo_root = Path(__file__).resolve().parents[1]
