@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta http-equiv="Cache-Control" content="no-store" />
-    <title>Manage Bibliography</title>
+    <title>Options</title>
     <style>
       :root { --bg:#f8f4ef; --ink:#1f2428; --muted:#5f6a6f; --accent:#1e4f7a; --card:#ffffffdd; --shadow:0 12px 30px rgba(31,36,40,.12); }
       * { box-sizing:border-box; }
@@ -14,6 +14,7 @@
       h1 { margin:0 0 6px; font-size:clamp(28px,3vw,40px); }
       p { color:var(--muted); }
       a { color:var(--accent); }
+      .nav-link { display:inline-block; padding:10px 18px; border-radius:999px; background:#e2e6ea; color:var(--ink); text-decoration:none; font-size:14px; }
       nav { display:flex; gap:10px; align-items:center; margin-top:16px; }
       .panel { margin-bottom:20px; padding:20px; border-radius:16px; background:var(--card); box-shadow:var(--shadow); }
       summary { color:var(--accent); cursor:pointer; font-size:18px; font-weight:600; }
@@ -39,10 +40,10 @@
   </head>
   <body>
     <header>
-      <h1>Manage Bibliography</h1>
+      <h1>Options</h1>
       <p>Create and edit catalog entries, merge duplicates, and maintain document types.</p>
       <nav>
-        <a href="viewer.html">← Back to finder and annotator</a>
+        <a class="nav-link" href="viewer.html">Bibliography</a>
         <button class="secondary" id="undoBtn" type="button">Undo last change</button>
       </nav>
     </header>
