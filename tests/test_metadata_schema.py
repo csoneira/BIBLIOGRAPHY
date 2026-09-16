@@ -2,6 +2,7 @@ import csv
 import importlib.util
 import re
 import unittest
+from datetime import date
 from pathlib import Path
 
 
@@ -28,7 +29,7 @@ class TestMetadataSchema(unittest.TestCase):
         self.assertEqual(header, bib.FIELDS)
 
         pdf_dir = repo_root / "PDFs"
-        pdfs_available = pdf_dir.exists() and any(pdf_dir.glob("*.pdf"))
+        local_pdf_codes = {path.stem for path in pdf_dir.glob("*.pdf")}
 
         metadata_codes = set()
         doi_prefix = re.compile(r"^https?://(dx\.)?doi\.org/", re.IGNORECASE)
@@ -45,6 +46,16 @@ class TestMetadataSchema(unittest.TestCase):
                 if year:
                     self.assertRegex(year, r"^\d{4}$")
 
+                publication_date = (row.get("publication_date") or "").strip()
+                if publication_date:
+                    self.assertRegex(
+                        publication_date,
+                        r"^\d{4}-(0[1-9]|1[0-2])(?:-(0[1-9]|[12]\d|3[01]))?$",
+                    )
+                    if len(publication_date) == 10:
+                        date.fromisoformat(publication_date)
+                    self.assertEqual(publication_date[:4], year)
+
                 doi = (row.get("doi") or "").strip()
                 if doi:
                     normalized = doi_prefix_alt.sub("", doi_prefix.sub("", doi))
@@ -53,8 +64,10 @@ class TestMetadataSchema(unittest.TestCase):
                 if code:
                     pdf_rel = bib.code_to_rel_pdf_path(code)
                     self.assertTrue(pdf_rel.lower().endswith(".pdf"))
-                    if pdfs_available:
-                        self.assertTrue((repo_root / pdf_rel).exists())
+
+                pdf_hosts = (row.get("pdf_hosts") or "").strip()
+                if code in local_pdf_codes:
+                    self.assertTrue(pdf_hosts, f"local PDF has no recorded host: {code}")
 
                 star = (row.get("star") or "").strip()
                 if star:
@@ -67,6 +80,12 @@ class TestMetadataSchema(unittest.TestCase):
                 added_at = (row.get("added_at") or "").strip()
                 if added_at:
                     self.assertRegex(added_at, r"^\d{4}-\d{2}-\d{2}$")
+
+                last_viewed = (row.get("last_viewed") or "").strip()
+                if last_viewed:
+                    self.assertRegex(last_viewed, r"^\d{4}-\d{2}-\d{2}$")
+
+        self.assertTrue(local_pdf_codes.issubset(metadata_codes))
 
         abstracts_path = repo_root / "METADATA" / "abstracts.csv"
         self.assertTrue(abstracts_path.exists(), "abstracts.csv not found")

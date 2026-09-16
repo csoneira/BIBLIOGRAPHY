@@ -56,6 +56,34 @@
         backdrop-filter: blur(8px);
       }
 
+      .dashboard {
+        margin: 0 10vw 24px;
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+        gap: 10px;
+      }
+
+      .dashboard-item {
+        padding: 12px 14px;
+        border-radius: 12px;
+        background: var(--card);
+        box-shadow: var(--shadow);
+      }
+
+      .dashboard-item strong {
+        display: block;
+        color: var(--accent);
+        font-size: 22px;
+      }
+
+      .dashboard-actions {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+        flex-wrap: wrap;
+      }
+
       .filters {
         display: grid;
         gap: 12px;
@@ -96,6 +124,129 @@
         flex-wrap: wrap;
       }
 
+      .entry-panel {
+        margin: 0 10vw 24px;
+        padding: 20px;
+        background: var(--card);
+        border-radius: 16px;
+        box-shadow: var(--shadow);
+      }
+
+      .entry-panel summary {
+        color: var(--accent);
+        cursor: pointer;
+        font-size: 17px;
+        font-weight: 600;
+      }
+
+      .entry-form {
+        margin-top: 16px;
+      }
+
+      .entry-form textarea {
+        width: 100%;
+        min-height: 80px;
+        padding: 10px 12px;
+        border-radius: 10px;
+        border: 1px solid #d6d6d6;
+        font-family: inherit;
+        font-size: 14px;
+      }
+
+      .entry-checks {
+        display: flex;
+        align-items: center;
+        gap: 18px;
+        flex-wrap: wrap;
+      }
+
+      .entry-checks label {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        margin: 0;
+      }
+
+      .entry-checks input {
+        width: auto;
+      }
+
+      .type-options {
+        display: flex;
+        align-items: center;
+        gap: 6px 12px;
+        flex-wrap: wrap;
+        min-height: 42px;
+        max-height: 110px;
+        overflow-y: auto;
+        padding: 8px 10px;
+        border: 1px solid #d6d6d6;
+        border-radius: 10px;
+        background: #fff;
+      }
+
+      .type-options label {
+        display: flex;
+        align-items: center;
+        gap: 5px;
+        margin: 0;
+        color: var(--ink);
+        white-space: nowrap;
+      }
+
+      .type-options input {
+        width: auto;
+      }
+
+      .type-filter {
+        grid-column: 1 / -1;
+      }
+
+      .status-options {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        min-height: 42px;
+        padding: 8px 10px;
+        border: 1px solid #d6d6d6;
+        border-radius: 10px;
+        background: #fff;
+      }
+
+      .status-options label {
+        display: flex;
+        align-items: center;
+        gap: 5px;
+        margin: 0;
+        color: var(--ink);
+        white-space: nowrap;
+      }
+
+      .status-options input {
+        width: auto;
+      }
+
+      .action-check {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        margin: 0;
+        padding: 8px 10px;
+        border-radius: 999px;
+        background: #f1f2f3;
+        color: var(--ink);
+      }
+
+      .action-check input {
+        width: auto;
+      }
+
+      .entry-status {
+        align-self: center;
+        color: var(--muted);
+        font-size: 13px;
+      }
+
       button {
         border: none;
         padding: 10px 18px;
@@ -113,6 +264,28 @@
       button.secondary {
         background: #e2e6ea;
         color: var(--ink);
+      }
+
+      button.danger {
+        background: #f9e4e1;
+        color: #8a2417;
+        border: 1px solid #e8b8b1;
+      }
+
+      button.compact {
+        padding: 5px 10px;
+        font-size: 12px;
+      }
+
+      .entry-edit-only[hidden] {
+        display: none;
+      }
+
+      .type-manager-row {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+        gap: 12px;
+        margin-top: 16px;
       }
 
       .star {
@@ -134,6 +307,31 @@
         font-size: 12px;
         font-weight: 600;
         line-height: 1;
+      }
+
+      .location-badge {
+        border: 1px solid #d6d6d6;
+        border-radius: 999px;
+        padding: 3px 10px;
+        font-size: 12px;
+        font-weight: 600;
+        line-height: 1;
+        white-space: nowrap;
+      }
+
+      .location-badge.local {
+        background: #e8f5e9;
+        color: #22652d;
+      }
+
+      .location-badge.remote {
+        background: #f1f2f3;
+        color: var(--muted);
+      }
+
+      .location-badge.not-added {
+        background: #fff3cd;
+        color: #725500;
       }
 
       .results {
@@ -269,7 +467,9 @@
 
       @media (max-width: 720px) {
         header,
+        .dashboard,
         .panel,
+        .entry-panel,
         .results {
           margin: 0 6vw 24px;
         }
@@ -282,31 +482,46 @@
       <p>Search, filter, and annotate metadata, then open local PDFs directly.</p>
     </header>
 
+    <section class="dashboard" aria-label="Library summary">
+      <div class="dashboard-item"><strong id="countTotal">–</strong>Total entries</div>
+      <div class="dashboard-item"><strong id="countLocal">–</strong>Local</div>
+      <div class="dashboard-item"><strong id="countRemote">–</strong>Remote</div>
+      <div class="dashboard-item"><strong id="countNotAdded">–</strong>Not added</div>
+      <div class="dashboard-item"><strong id="countMultiple">–</strong>Multiple computers</div>
+      <div class="dashboard-item dashboard-actions">
+        <button class="secondary compact" id="undoBtn" type="button">Undo last change</button>
+      </div>
+    </section>
+
     <section class="panel">
       <div class="filters">
         <div>
-          <label for="fromYear">From year</label>
-          <input id="fromYear" type="number" placeholder="2018" />
+          <label for="fromDate">From date</label>
+          <input id="fromDate" type="date" />
         </div>
         <div>
-          <label for="toYear">To year</label>
-          <input id="toYear" type="number" placeholder="2025" />
-        </div>
-        <div>
-          <label for="typeFilter">Type</label>
-          <input id="typeFilter" type="text" placeholder="article, book, thesis" />
+          <label for="toDate">To date</label>
+          <input id="toDate" type="date" />
         </div>
         <div>
           <label for="titleFilter">Title contains</label>
           <input id="titleFilter" type="text" placeholder="muon, detector" />
         </div>
         <div>
-          <label for="starOnly">Starred only</label>
-          <input id="starOnly" type="checkbox" />
+          <label>Status</label>
+          <div class="status-options">
+            <label><input id="starOnly" type="checkbox" /> Starred</label>
+            <label><input id="unreadOnly" type="checkbox" /> Unread</label>
+          </div>
         </div>
         <div>
-          <label for="unreadOnly">Unread only</label>
-          <input id="unreadOnly" type="checkbox" />
+          <label for="locationFilter">PDF location</label>
+          <select id="locationFilter">
+            <option value="">All PDFs</option>
+            <option value="local">Local on this computer</option>
+            <option value="remote">Remote on another computer</option>
+            <option value="not_added">PDF not added</option>
+          </select>
         </div>
         <div>
           <label for="journal">Journal contains</label>
@@ -336,6 +551,7 @@
           <label for="addedSort">Sort order</label>
           <select id="addedSort">
             <option value="">No sort</option>
+            <option value="random">Random order</option>
             <option value="added_desc">Added date: newest first</option>
             <option value="added_asc">Added date: oldest first</option>
             <option value="publication_desc">Publication date: newest first</option>
@@ -348,14 +564,108 @@
             <option value="">Select saved list</option>
           </select>
         </div>
+        <div class="type-filter">
+          <label>Types</label>
+          <div class="type-options" id="typeFilterOptions" aria-label="Filter by document types"></div>
+        </div>
       </div>
       <div class="actions">
         <button class="primary" id="applyBtn">Apply filters</button>
         <button class="secondary" id="resetBtn">Reset</button>
         <button class="secondary" id="loadListBtn">Load list</button>
         <button class="secondary" id="saveBtn">Save list</button>
+        <button class="secondary" id="surpriseBtn">Surprise me</button>
+        <label class="action-check"><input id="hideRecent" type="checkbox" /> Exclude entries viewed in the last 30 days</label>
       </div>
     </section>
+
+    <details class="entry-panel">
+      <summary id="entryFormTitle">Create a metadata-only entry</summary>
+      <form class="entry-form" id="entryForm">
+        <input id="entryCode" type="hidden" />
+        <div class="filters">
+          <div>
+            <label for="entryTitle">Title *</label>
+            <input id="entryTitle" name="title" type="text" required />
+          </div>
+          <div>
+            <label for="entryPublicationMonth">Publication month</label>
+            <input id="entryPublicationMonth" type="month" />
+          </div>
+          <div>
+            <label for="entryPublicationDay">Day (optional)</label>
+            <input id="entryPublicationDay" type="number" min="1" max="31" placeholder="e.g. 15" disabled />
+          </div>
+          <div>
+            <label for="entryType">Type *</label>
+            <select id="entryType" name="type" required></select>
+          </div>
+          <div id="entryNewTypeContainer" hidden>
+            <label for="entryNewType">New type *</label>
+            <input id="entryNewType" type="text" placeholder="report, chapter, manual..." />
+          </div>
+          <div>
+            <label for="entryAuthor">Author(s)</label>
+            <input id="entryAuthor" name="author" type="text" />
+          </div>
+          <div>
+            <label for="entryJournal">Journal</label>
+            <input id="entryJournal" name="journal" type="text" />
+          </div>
+          <div>
+            <label for="entryDoi">DOI</label>
+            <input id="entryDoi" name="doi" type="text" placeholder="10.xxxx/..." />
+          </div>
+          <div>
+            <label for="entryKeywords">Keywords</label>
+            <input id="entryKeywords" name="keywords" type="text" />
+          </div>
+          <div>
+            <label for="entryMyKeywords">My keywords</label>
+            <input id="entryMyKeywords" name="my_keywords" type="text" />
+          </div>
+          <div class="entry-edit-only" id="entryPdfHostsContainer" hidden>
+            <label for="entryPdfHosts">PDF computers</label>
+            <input id="entryPdfHosts" type="text" placeholder="naranjito; manzanita" />
+          </div>
+        </div>
+        <div>
+          <label for="entryNotes">Notes</label>
+          <textarea id="entryNotes" name="notes"></textarea>
+        </div>
+        <div class="actions">
+          <div class="entry-checks">
+            <label><input id="entryUnread" name="unread" type="checkbox" checked /> Unread</label>
+            <label><input id="entryStar" name="star" type="checkbox" /> Starred</label>
+          </div>
+          <button class="primary" id="createEntryBtn" type="submit">Create entry</button>
+          <button class="secondary entry-edit-only" id="cancelEditBtn" type="button" hidden>Cancel edit</button>
+          <span class="entry-status" id="entryStatus"></span>
+        </div>
+      </form>
+    </details>
+
+    <details class="entry-panel">
+      <summary>Manage document types</summary>
+      <div class="type-manager-row">
+        <div>
+          <label for="manageTypeSource">Existing type</label>
+          <select id="manageTypeSource"></select>
+        </div>
+        <div>
+          <label for="manageTypeTarget">Rename or merge into</label>
+          <input id="manageTypeTarget" type="text" list="knownTypes" placeholder="existing or new type" />
+          <datalist id="knownTypes"></datalist>
+        </div>
+      </div>
+      <div class="actions">
+        <button class="primary" id="manageTypeBtn" type="button">Rename / merge type</button>
+        <span class="entry-status" id="manageTypeStatus"></span>
+      </div>
+      <p>Renaming to an existing type merges the two. Once no entries use the old type, it disappears from every selector.</p>
+    </details>
+
+    <input id="pdfUpload" type="file" accept="application/pdf,.pdf" hidden />
 
     <section class="results" id="results"></section>
 

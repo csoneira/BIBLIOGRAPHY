@@ -6,6 +6,7 @@ import json
 import os
 import re
 import shutil
+import socket
 import subprocess
 import sys
 from datetime import date, datetime, timezone
@@ -26,6 +27,7 @@ FIELDS = [
     "title",
     "journal",
     "year",
+    "publication_date",
     "doi",
     "author",
     "keywords",
@@ -33,6 +35,8 @@ FIELDS = [
     "star",
     "unread",
     "added_at",
+    "pdf_hosts",
+    "last_viewed",
     "notes",
 ]
 
@@ -40,6 +44,7 @@ DOI_RE = re.compile(r"\b10\.\d{4,9}/[^\s\"<>]+", re.IGNORECASE)
 DOI_FULL_RE = re.compile(r"^10\.\d{4,9}/\S+$", re.IGNORECASE)
 YEAR_RE = re.compile(r"^\d{4}$")
 ADDED_AT_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+PUBLICATION_DATE_RE = re.compile(r"^\d{4}-(0[1-9]|1[0-2])(?:-(0[1-9]|[12]\d|3[01]))?$")
 ARXIV_RE = re.compile(r"(?<!\d)(\d{2})(\d{2})\.\d{4,5}(?:v\d+)?(?!\d)")
 ARXIV_TEXT_RE = re.compile(r"arxiv:\s*(\d{4})\.(\d{4,5})", re.IGNORECASE)
 BAD_TITLE_RE = re.compile(
@@ -74,7 +79,7 @@ ABSTRACT_NOISE_RE = re.compile(
     re.IGNORECASE,
 )
 
-REQUIRED_FIELDS = ["code", "type", "title", "year"]
+REQUIRED_FIELDS = ["code", "type", "title"]
 ABSTRACT_FIELDS = ["code", "abstract"]
 
 
@@ -132,6 +137,13 @@ def split_tags(value: str) -> list:
         return []
     parts = re.split(r"[;,]", value)
     return [part.strip() for part in parts if part.strip()]
+
+
+def add_pdf_host(value: str, hostname: str) -> str:
+    hosts = split_tags(value)
+    if hostname and hostname not in hosts:
+        hosts.append(hostname)
+    return "; ".join(hosts)
 
 
 def run_pdfinfo(path: Path) -> dict:
@@ -467,7 +479,7 @@ def load_metadata() -> dict:
 
 def save_metadata(rows: list) -> None:
     with METADATA_FILE.open("w", newline="") as handle:
-        writer = csv.DictWriter(handle, fieldnames=FIELDS)
+        writer = csv.DictWriter(handle, fieldnames=FIELDS, lineterminator="\n")
         writer.writeheader()
         for row in rows:
             writer.writerow(row)
@@ -478,7 +490,7 @@ def ensure_abstracts_file() -> None:
     if ABSTRACTS_FILE.exists():
         return
     with ABSTRACTS_FILE.open("w", newline="") as handle:
-        writer = csv.DictWriter(handle, fieldnames=ABSTRACT_FIELDS)
+        writer = csv.DictWriter(handle, fieldnames=ABSTRACT_FIELDS, lineterminator="\n")
         writer.writeheader()
 
 
@@ -499,7 +511,7 @@ def load_abstracts() -> dict:
 def save_abstracts(mapping: dict) -> None:
     ensure_abstracts_file()
     with ABSTRACTS_FILE.open("w", newline="") as handle:
-        writer = csv.DictWriter(handle, fieldnames=ABSTRACT_FIELDS)
+        writer = csv.DictWriter(handle, fieldnames=ABSTRACT_FIELDS, lineterminator="\n")
         writer.writeheader()
         for raw_code in sorted(mapping.keys()):
             code = (raw_code or "").strip()
@@ -641,7 +653,19 @@ def scan_pdfs(dry_run: bool = False) -> list:
 
     config = load_config()
     existing = load_metadata()
-    rows = []
+    existing_rows = load_rows()
+    updated_rows = {}
+    new_rows = []
+    doi_index = {
+        (row.get("doi") or "").strip().lower(): code
+        for code, row in existing.items()
+        if (row.get("doi") or "").strip()
+    }
+    title_index = {
+        normalize_title_text(row.get("title", "")).lower(): code
+        for code, row in existing.items()
+        if normalize_title_text(row.get("title", ""))
+    }
 
     for path in sorted(LIB_DIR.glob("*.pdf")):
         old_code = path.stem
@@ -653,8 +677,21 @@ def scan_pdfs(dry_run: bool = False) -> list:
         author = extract_author(info)
         doi = extract_doi(text)
 
-        base_code = build_code(year, doc_type, title)
-        code, new_path = ensure_available_code(base_code, path)
+        matched_code = old_code if old_code in existing else ""
+        if not matched_code and doi:
+            matched_code = doi_index.get(doi.lower(), "")
+        if not matched_code and title:
+            matched_code = title_index.get(normalize_title_text(title).lower(), "")
+
+        if matched_code:
+            code = matched_code
+            new_path = LIB_DIR / f"{code}.pdf"
+            if new_path.exists() and new_path.resolve() != path.resolve():
+                print(f"Duplicate PDF left unchanged: {path.name} matches {code}")
+                continue
+        else:
+            base_code = build_code(year, doc_type, title)
+            code, new_path = ensure_available_code(base_code, path)
 
         if not dry_run and (path.resolve() != new_path.resolve()):
             path.rename(new_path)
@@ -663,7 +700,7 @@ def scan_pdfs(dry_run: bool = False) -> list:
 
         code = new_path.stem
 
-        prev = existing.get(old_code, {})
+        prev = existing.get(matched_code, {})
         auto_tags = ""
         if not prev.get("my_keywords"):
             auto_tags = suggest_my_keywords(f"{title}\n{prev.get('keywords', '')}", config)
@@ -673,6 +710,7 @@ def scan_pdfs(dry_run: bool = False) -> list:
             "title": prev.get("title", title),
             "journal": prev.get("journal", ""),
             "year": prev.get("year", year),
+            "publication_date": prev.get("publication_date", ""),
             "doi": prev.get("doi", doi),
             "author": prev.get("author", author),
             "keywords": prev.get("keywords", ""),
@@ -680,12 +718,45 @@ def scan_pdfs(dry_run: bool = False) -> list:
             "star": prev.get("star", ""),
             "unread": prev.get("unread", ""),
             "added_at": prev.get("added_at", datetime.now(timezone.utc).strftime("%Y-%m-%d")),
+            "pdf_hosts": add_pdf_host(prev.get("pdf_hosts", ""), socket.gethostname()),
+            "last_viewed": prev.get("last_viewed", ""),
             "notes": prev.get("notes", ""),
         }
-        rows.append(row)
+        if matched_code:
+            updated_rows[matched_code] = row
+        else:
+            new_rows.append(row)
+            if doi:
+                doi_index[doi.lower()] = code
+            if title:
+                title_index[normalize_title_text(title).lower()] = code
 
+    # A computer may hold only part of the PDF library. Preserve metadata for
+    # catalog entries whose PDFs are not available locally, update rows for
+    # PDFs that were scanned, and append genuinely new local PDFs.
+    rows = [
+        updated_rows.get((row.get("code") or "").strip(), row)
+        for row in existing_rows
+    ]
+    rows.extend(new_rows)
     save_metadata(rows)
     return rows
+
+
+def mark_pdf_host(hostname: str, include_all: bool = False) -> int:
+    rows = load_rows()
+    updated = 0
+    for row in rows:
+        if not include_all and not row_pdf_path(row).exists():
+            continue
+        current = row.get("pdf_hosts", "")
+        next_value = add_pdf_host(current, hostname)
+        if next_value != current:
+            row["pdf_hosts"] = next_value
+            updated += 1
+    save_metadata(rows)
+    print(f"Recorded {hostname} for {updated} PDF entries")
+    return updated
 
 
 def load_collections() -> dict:
@@ -806,7 +877,7 @@ def find_bad_titles(rows: list) -> list:
     return bad
 
 
-def verify_integrity() -> int:
+def verify_integrity(require_pdfs: bool = False) -> int:
     issues = 0
     if not METADATA_FILE.exists():
         issues += 1
@@ -839,10 +910,16 @@ def verify_integrity() -> int:
         for item in missing_in_meta[:20]:
             print(f"  - {item}")
     if missing_pdfs:
-        issues += 1
-        print(f"Missing PDF files: {len(missing_pdfs)}")
-        for item in missing_pdfs[:20]:
-            print(f"  - {item}")
+        if require_pdfs:
+            issues += 1
+            print(f"Missing PDF files: {len(missing_pdfs)}")
+            for item in missing_pdfs[:20]:
+                print(f"  - {item}")
+        else:
+            print(
+                f"Local PDF coverage: {len(meta_files) - len(missing_pdfs)}/{len(meta_files)} "
+                "(missing files are allowed)"
+            )
     if bad_titles:
         issues += 1
         print(f"Bad titles: {len(bad_titles)}")
@@ -1025,12 +1102,14 @@ def dedupe_metadata() -> int:
     return duplicates
 
 
-def validate_metadata(rows: list) -> int:
+def validate_metadata(rows: list, require_pdfs: bool = False) -> int:
     missing_required = []
     bad_years = []
+    bad_publication_dates = []
     bad_dois = []
     bad_unread = []
     bad_added_dates = []
+    bad_viewed_dates = []
     missing_files = []
 
     for row in rows:
@@ -1041,6 +1120,19 @@ def validate_metadata(rows: list) -> int:
         year = (row.get("year") or "").strip()
         if year and not YEAR_RE.match(year):
             bad_years.append((row, year))
+
+        publication_date = (row.get("publication_date") or "").strip()
+        if publication_date:
+            valid_publication_date = bool(PUBLICATION_DATE_RE.match(publication_date))
+            if valid_publication_date and len(publication_date) == 10:
+                try:
+                    date.fromisoformat(publication_date)
+                except ValueError:
+                    valid_publication_date = False
+            if not valid_publication_date:
+                bad_publication_dates.append((row, publication_date))
+        if publication_date and year and publication_date[:4] != year:
+            bad_publication_dates.append((row, publication_date))
 
         doi = (row.get("doi") or "").strip()
         if doi and not DOI_FULL_RE.match(doi):
@@ -1053,6 +1145,10 @@ def validate_metadata(rows: list) -> int:
         added_at = (row.get("added_at") or "").strip()
         if added_at and parse_ymd_date(added_at) is None:
             bad_added_dates.append((row, added_at))
+
+        last_viewed = (row.get("last_viewed") or "").strip()
+        if last_viewed and parse_ymd_date(last_viewed) is None:
+            bad_viewed_dates.append((row, last_viewed))
 
         code = (row.get("code") or "").strip()
         file_rel = code_to_rel_pdf_path(code)
@@ -1070,6 +1166,11 @@ def validate_metadata(rows: list) -> int:
         print(f"Bad year format: {len(bad_years)}")
         for row, year in bad_years[:20]:
             print(f"  - {row.get('code', '')} :: {year}")
+    if bad_publication_dates:
+        issues += 1
+        print(f"Bad publication date: {len(bad_publication_dates)}")
+        for row, publication_date in bad_publication_dates[:20]:
+            print(f"  - {row.get('code', '')} :: {publication_date}")
     if bad_dois:
         issues += 1
         print(f"Bad DOI format: {len(bad_dois)}")
@@ -1085,11 +1186,22 @@ def validate_metadata(rows: list) -> int:
         print(f"Bad added_at format: {len(bad_added_dates)}")
         for row, added_at in bad_added_dates[:20]:
             print(f"  - {row.get('code', '')} :: {added_at}")
-    if missing_files:
+    if bad_viewed_dates:
         issues += 1
-        print(f"Missing PDF files: {len(missing_files)}")
-        for _, file_rel in missing_files[:20]:
-            print(f"  - {file_rel}")
+        print(f"Bad last_viewed format: {len(bad_viewed_dates)}")
+        for row, last_viewed in bad_viewed_dates[:20]:
+            print(f"  - {row.get('code', '')} :: {last_viewed}")
+    if missing_files:
+        if require_pdfs:
+            issues += 1
+            print(f"Missing PDF files: {len(missing_files)}")
+            for _, file_rel in missing_files[:20]:
+                print(f"  - {file_rel}")
+        else:
+            print(
+                f"Local PDF coverage: {len(rows) - len(missing_files)}/{len(rows)} "
+                "(missing files are allowed)"
+            )
 
     if issues == 0:
         print("Validation: OK")
@@ -1334,6 +1446,14 @@ def main():
     scan = sub.add_parser("scan", help="Scan PDFs, rename, and update metadata")
     scan.add_argument("--dry-run", action="store_true", help="Preview without renaming")
 
+    pdf_host = sub.add_parser("mark-pdf-host", help="Record which computer stores PDFs")
+    pdf_host.add_argument("--host", default=socket.gethostname(), help="Computer name")
+    pdf_host.add_argument(
+        "--all",
+        action="store_true",
+        help="Mark every catalog entry instead of only PDFs available locally",
+    )
+
     find = sub.add_parser("find", help="Filter metadata and list codes")
     find.add_argument("--from-year", type=int)
     find.add_argument("--to-year", type=int)
@@ -1362,6 +1482,11 @@ def main():
     tag.add_argument("--force", action="store_true", help="Overwrite existing my_keywords")
 
     verify = sub.add_parser("verify", help="Check metadata integrity")
+    verify.add_argument(
+        "--require-pdfs",
+        action="store_true",
+        help="Fail when catalogued PDFs are not available on this computer",
+    )
     abstracts = sub.add_parser("abstracts", help="Build or refresh abstracts metadata")
     abstracts.add_argument(
         "--from-pdfs",
@@ -1396,6 +1521,11 @@ def main():
     bibtex.add_argument("--force", action="store_true", help="Overwrite existing fields")
 
     validate = sub.add_parser("validate", help="Validate required fields and formats")
+    validate.add_argument(
+        "--require-pdfs",
+        action="store_true",
+        help="Fail when catalogued PDFs are not available on this computer",
+    )
     stats = sub.add_parser("stats", help="Summarize metadata counts")
 
     export = sub.add_parser("export", help="Export filtered metadata to JSON or CSV")
@@ -1416,6 +1546,9 @@ def main():
 
     if args.command == "scan":
         scan_pdfs(dry_run=args.dry_run)
+        return
+    if args.command == "mark-pdf-host":
+        mark_pdf_host(args.host, include_all=args.all)
         return
     if args.command == "abstracts":
         rebuild_abstracts(from_pdfs=args.from_pdfs, force=args.force)
@@ -1511,7 +1644,7 @@ def main():
         return
 
     if args.command == "verify":
-        issues = verify_integrity()
+        issues = verify_integrity(require_pdfs=args.require_pdfs)
         if issues:
             raise SystemExit(1)
         return
@@ -1538,7 +1671,7 @@ def main():
         return
 
     if args.command == "validate":
-        issues = validate_metadata(rows)
+        issues = validate_metadata(rows, require_pdfs=args.require_pdfs)
         if issues:
             raise SystemExit(1)
         return

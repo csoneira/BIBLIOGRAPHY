@@ -192,6 +192,25 @@ class TestAbstracts(unittest.TestCase):
             self.assertGreaterEqual(issues, 1)
             self.assertIn("Metadata header mismatch", output.getvalue())
 
+    def test_verify_allows_missing_local_pdfs_unless_strict(self):
+        repo_root = Path(__file__).resolve().parents[1]
+        bib = load_bib(repo_root / "CODE" / "bib.py")
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            tmp_root = Path(tmp_dir)
+            (tmp_root / "PDFs").mkdir()
+            (tmp_root / "METADATA").mkdir()
+            configure_paths(bib, tmp_root)
+            write_metadata(
+                bib.METADATA_FILE,
+                bib.FIELDS,
+                [{"code": "remote", "type": "article", "title": "Remote", "year": "2020"}],
+            )
+            bib.ABSTRACTS_FILE.write_text("code,abstract\nremote,\n")
+
+            self.assertEqual(bib.verify_integrity(), 0)
+            self.assertGreater(bib.verify_integrity(require_pdfs=True), 0)
+
 
 if __name__ == "__main__":
     unittest.main()
