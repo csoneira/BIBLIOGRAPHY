@@ -51,6 +51,8 @@ window.addEventListener("pageshow", (event) => {
   }
 });
 
+let fullCatalogRows = [];
+
 function toRows(csvText) {
   const parsed = parseCsv(csvText);
   if (parsed.length === 0) {
@@ -535,18 +537,39 @@ function renderResults(rows) {
 }
 
 function updateResultSummary(rows) {
+  const local = rows.filter((row) => row.pdf_status === "local").length;
+  const remote = rows.filter((row) => row.pdf_status === "remote").length;
+  const notAdded = rows.filter((row) => row.pdf_status === "not_added").length;
+  const excluded = Math.max(0, fullCatalogRows.length - rows.length);
   const counts = {
     resultCountTotal: rows.length,
-    resultCountLocal: rows.filter((row) => row.pdf_status === "local").length,
-    resultCountRemote: rows.filter((row) => row.pdf_status === "remote").length,
-    resultCountNotAdded: rows.filter((row) => row.pdf_status === "not_added").length,
+    resultCountLocal: local,
+    resultCountRemote: remote,
+    resultCountNotAdded: notAdded,
     resultCountStarred: rows.filter((row) => row.star === "1").length,
     resultCountUnread: rows.filter((row) => row.unread === "1").length,
+    resultCountExcluded: excluded,
+    resultBarIncluded: rows.length,
+    resultBarExcluded: excluded,
   };
   Object.entries(counts).forEach(([id, count]) => {
     const element = document.getElementById(id);
     if (element) element.textContent = count;
   });
+  [
+    ["resultLocalBar", local],
+    ["resultRemoteBar", remote],
+    ["resultNotAddedBar", notAdded],
+    ["resultExcludedBar", excluded],
+  ].forEach(([id, count]) => {
+    const segment = document.getElementById(id);
+    segment.style.flexGrow = count;
+    segment.hidden = count === 0;
+  });
+  document.getElementById("filteredResultsBar").setAttribute(
+    "aria-label",
+    `${rows.length} references shown: ${local} local, ${remote} remote, ${notAdded} not added; ${excluded} left out`,
+  );
 }
 
 function getFilters() {
@@ -1035,6 +1058,7 @@ async function loadSavedFilters() {
 async function init() {
   try {
     const rows = await loadData();
+    fullCatalogRows = rows;
     const savedFilters = await loadSavedFilters();
     let filteredRows = rows;
     setupFilterTypeOptions(rows);

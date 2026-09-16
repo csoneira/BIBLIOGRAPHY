@@ -124,7 +124,8 @@
 
       .library-local { background: #3b8d5a; }
       .library-remote { background: #3973a8; }
-      .library-not-added { background: #929ba2; }
+      .library-not-added { background: #b84b45; }
+      .filter-excluded { background: #a6adb3; }
 
       .library-legend {
         display: flex;
@@ -156,9 +157,26 @@
         display: grid;
         grid-template-columns: repeat(auto-fit, minmax(105px, 1fr));
         gap: 8px;
+        margin-top: 10px;
+      }
+
+      .filtered-bar-block {
         margin-top: 16px;
         padding-top: 16px;
         border-top: 1px solid #ddd5cd;
+      }
+
+      .filtered-bar-caption {
+        display: flex;
+        justify-content: space-between;
+        gap: 12px;
+        margin-bottom: 7px;
+        color: var(--muted);
+        font-size: 13px;
+      }
+
+      .filtered-bar-caption strong {
+        color: var(--ink);
       }
 
       .result-summary-item {
@@ -174,6 +192,12 @@
         color: var(--accent);
         font-size: 19px;
       }
+
+      .result-summary-item.local-result strong { color: #3b8d5a; }
+      .result-summary-item.remote-result strong { color: #3973a8; }
+      .result-summary-item.not-added-result strong { color: #b84b45; }
+      .result-summary-item.excluded-result { background: #e5e8ea; }
+      .result-summary-item.excluded-result strong { color: #70777c; }
 
       .filters {
         display: grid;
@@ -735,13 +759,26 @@
         <button class="secondary" id="resetBtn">Reset</button>
         <button class="secondary" id="surpriseBtn">Surprise me</button>
       </div>
+      <div class="filtered-bar-block">
+        <div class="filtered-bar-caption">
+          <span><strong id="resultBarIncluded">–</strong> references shown</span>
+          <span><strong id="resultBarExcluded">–</strong> left out</span>
+        </div>
+        <div class="library-bar" id="filteredResultsBar" role="img" aria-label="Filtered bibliography results">
+          <span class="library-bar-segment library-local" id="resultLocalBar"></span>
+          <span class="library-bar-segment library-remote" id="resultRemoteBar"></span>
+          <span class="library-bar-segment library-not-added" id="resultNotAddedBar"></span>
+          <span class="library-bar-segment filter-excluded" id="resultExcludedBar"></span>
+        </div>
+      </div>
       <div class="result-summary" aria-label="Current result summary">
         <div class="result-summary-item"><strong id="resultCountTotal">–</strong>Results</div>
-        <div class="result-summary-item"><strong id="resultCountLocal">–</strong>Local</div>
-        <div class="result-summary-item"><strong id="resultCountRemote">–</strong>Remote</div>
-        <div class="result-summary-item"><strong id="resultCountNotAdded">–</strong>Not added</div>
+        <div class="result-summary-item local-result"><strong id="resultCountLocal">–</strong>Local</div>
+        <div class="result-summary-item remote-result"><strong id="resultCountRemote">–</strong>Remote</div>
+        <div class="result-summary-item not-added-result"><strong id="resultCountNotAdded">–</strong>Not added</div>
         <div class="result-summary-item"><strong id="resultCountStarred">–</strong>Starred</div>
         <div class="result-summary-item"><strong id="resultCountUnread">–</strong>Unread</div>
+        <div class="result-summary-item excluded-result"><strong id="resultCountExcluded">–</strong>Left out</div>
       </div>
       <div class="actions" aria-label="Actions for current results">
         <button class="secondary" id="saveViewBtn">Save filter</button>
