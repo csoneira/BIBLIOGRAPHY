@@ -1,6 +1,6 @@
 [Desktop Entry]
 Type=Application
-Name=Bibliography Workbench
+Name=Bibliography
 Comment=Search, filter, and annotate metadata, then open local PDFs directly.
 Exec=/home/csoneira/BIBLIOGRAPHY/LAUNCHER/launch_viewer.sh
 Icon=/home/csoneira/BIBLIOGRAPHY/LAUNCHER/icon.png
