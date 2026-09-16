@@ -151,6 +151,7 @@ python3 CODE/bib.py mark-pdf-host --host COMPUTER-NAME --all
   document types come from the catalog with an option to add a new type.
 - Catalog-management tools (create/edit entries, merge duplicates, and manage types)
   live on the separate `VIEWER/manage.html` page, linked from the main finder.
+- Options includes a fixed-wallpaper selector shared by both pages, using images stored in `VIEWER/wallpapers/`.
 - Saved Filter support via `SAVED_LISTS/*.json`.
 - Title click behavior:
   - Normal left-click opens the local `PDFs/{code}.pdf` file with `evince` (fallback `xdg-open`) through server endpoint `/open-pdf`.

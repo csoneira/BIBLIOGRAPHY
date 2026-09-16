@@ -179,6 +179,18 @@ function setupSavedFilterManager(filters) {
   updateSelection();
 }
 
+function setupWallpaperOptions() {
+  const wallpaper = window.bibliographyWallpaper;
+  if (!wallpaper) return;
+  const current = wallpaper.current();
+  document.querySelectorAll('input[name="wallpaper"]').forEach((input) => {
+    input.checked = input.value === current;
+    input.addEventListener("change", () => {
+      if (input.checked) wallpaper.save(input.value);
+    });
+  });
+}
+
 async function init() {
   try {
     const [rows, savedFilters] = await Promise.all([loadRows(), loadSavedFilters()]);
@@ -186,6 +198,7 @@ async function init() {
     setupTypes(rows);
     setupEntries(rows);
     setupSavedFilterManager(savedFilters);
+    setupWallpaperOptions();
     resetForm(false);
 
     if (editCode) {
