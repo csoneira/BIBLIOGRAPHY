@@ -18,6 +18,7 @@
       nav { display:flex; gap:10px; align-items:center; margin-top:16px; }
       .panel { margin-bottom:20px; padding:20px; border-radius:16px; background:var(--card); box-shadow:var(--shadow); }
       summary { color:var(--accent); cursor:pointer; font-size:18px; font-weight:600; }
+      h2 { margin:0 0 6px; color:var(--accent); font-size:18px; }
       .grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); gap:12px; margin-top:16px; }
       .wide { grid-column:1/-1; }
       label { display:block; margin-bottom:6px; color:var(--muted); font-size:13px; }
@@ -44,12 +45,19 @@
       <p>Create and edit catalog entries, merge duplicates, and maintain document types.</p>
       <nav>
         <a class="nav-link" href="viewer.html">Bibliography</a>
-        <button class="secondary" id="undoBtn" type="button">Undo last change</button>
-        <button class="secondary" id="auditBtn" type="button">Audit PDFs</button>
       </nav>
     </header>
 
     <main>
+      <section class="panel" aria-labelledby="maintenanceTitle">
+        <h2 id="maintenanceTitle">Maintenance</h2>
+        <p>Check local PDF integrity or reverse the most recent change made through the viewer.</p>
+        <div class="actions">
+          <button class="secondary" id="undoBtn" type="button">Undo last change</button>
+          <button class="secondary" id="auditBtn" type="button">Audit PDFs</button>
+        </div>
+      </section>
+
       <details class="panel" id="entryPanel">
         <summary id="entryFormTitle">Create a metadata-only entry</summary>
         <form id="entryForm">
