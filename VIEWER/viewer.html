@@ -168,6 +168,13 @@
         grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
       }
 
+      .date-filters {
+        grid-column: 1 / -1;
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 12px;
+      }
+
       .saved-filter-bar {
         display: grid;
         grid-template-columns: minmax(220px, 1fr) auto minmax(180px, 1fr);
@@ -627,29 +634,31 @@
         <span class="entry-status" id="savedFilterStatus"></span>
       </div>
       <div class="filters">
-        <div>
-          <label for="fromDate">Published from</label>
-          <input id="fromDate" type="date" />
-        </div>
-        <div>
-          <label for="toDate">Published to</label>
-          <input id="toDate" type="date" />
-        </div>
-        <div>
-          <label for="addedFrom">Added from</label>
-          <input id="addedFrom" type="date" />
-        </div>
-        <div>
-          <label for="addedTo">Added to</label>
-          <input id="addedTo" type="date" />
-        </div>
-        <div>
-          <label for="readFrom">Read from</label>
-          <input id="readFrom" type="date" />
-        </div>
-        <div>
-          <label for="readTo">Read to</label>
-          <input id="readTo" type="date" />
+        <div class="date-filters">
+          <div>
+            <label for="fromDate">Published from</label>
+            <input id="fromDate" type="date" />
+          </div>
+          <div>
+            <label for="toDate">Published to</label>
+            <input id="toDate" type="date" />
+          </div>
+          <div>
+            <label for="addedFrom">Added from</label>
+            <input id="addedFrom" type="date" />
+          </div>
+          <div>
+            <label for="addedTo">Added to</label>
+            <input id="addedTo" type="date" />
+          </div>
+          <div>
+            <label for="readFrom">Read from</label>
+            <input id="readFrom" type="date" />
+          </div>
+          <div>
+            <label for="readTo">Read to</label>
+            <input id="readTo" type="date" />
+          </div>
         </div>
         <div>
           <label for="titleFilter">Title contains</label>
