@@ -262,6 +262,7 @@ function applySavedList(rows, savedList) {
 }
 
 function renderResults(rows) {
+  updateResultSummary(rows);
   const container = document.getElementById("results");
   container.innerHTML = "";
 
@@ -324,6 +325,7 @@ function renderResults(rows) {
         await setStarOnServer(row.code, next);
         row.star = next;
         star.textContent = row.star === "1" ? "★" : "☆";
+        updateResultSummary(rows);
       } catch (err) {
         alert("Failed to save star. Start the viewer server with: python3 CODE/viewer_server.py");
       }
@@ -340,6 +342,7 @@ function renderResults(rows) {
         await setUnreadOnServer(row.code, next);
         row.unread = next;
         unread.textContent = row.unread === "1" ? "Unread" : "Read";
+        updateResultSummary(rows);
       } catch (err) {
         alert("Failed to save unread. Start the viewer server with: python3 CODE/viewer_server.py");
       }
@@ -537,6 +540,21 @@ function renderResults(rows) {
     card.appendChild(notesSection);
 
     container.appendChild(card);
+  });
+}
+
+function updateResultSummary(rows) {
+  const counts = {
+    resultCountTotal: rows.length,
+    resultCountLocal: rows.filter((row) => row.pdf_status === "local").length,
+    resultCountRemote: rows.filter((row) => row.pdf_status === "remote").length,
+    resultCountNotAdded: rows.filter((row) => row.pdf_status === "not_added").length,
+    resultCountStarred: rows.filter((row) => row.star === "1").length,
+    resultCountUnread: rows.filter((row) => row.unread === "1").length,
+  };
+  Object.entries(counts).forEach(([id, count]) => {
+    const element = document.getElementById(id);
+    if (element) element.textContent = count;
   });
 }
 

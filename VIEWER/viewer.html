@@ -84,6 +84,29 @@
         flex-wrap: wrap;
       }
 
+      .result-summary {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(105px, 1fr));
+        gap: 8px;
+        margin-top: 16px;
+        padding-top: 16px;
+        border-top: 1px solid #ddd5cd;
+      }
+
+      .result-summary-item {
+        padding: 9px 12px;
+        border-radius: 10px;
+        background: #f3f5f6;
+        color: var(--muted);
+        font-size: 13px;
+      }
+
+      .result-summary-item strong {
+        display: block;
+        color: var(--accent);
+        font-size: 19px;
+      }
+
       .filters {
         display: grid;
         gap: 12px;
@@ -611,6 +634,14 @@
         <button class="secondary" id="copyCitationsBtn">Copy results</button>
         <button class="secondary" id="downloadCitationsBtn">Download citations</button>
         <label class="action-check"><input id="hideRecent" type="checkbox" /> Exclude entries viewed in the last 30 days</label>
+      </div>
+      <div class="result-summary" aria-label="Current result summary">
+        <div class="result-summary-item"><strong id="resultCountTotal">–</strong>Results</div>
+        <div class="result-summary-item"><strong id="resultCountLocal">–</strong>Local</div>
+        <div class="result-summary-item"><strong id="resultCountRemote">–</strong>Remote</div>
+        <div class="result-summary-item"><strong id="resultCountNotAdded">–</strong>Not added</div>
+        <div class="result-summary-item"><strong id="resultCountStarred">–</strong>Starred</div>
+        <div class="result-summary-item"><strong id="resultCountUnread">–</strong>Unread</div>
       </div>
     </section>
 
