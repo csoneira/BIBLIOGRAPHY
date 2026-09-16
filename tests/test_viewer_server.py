@@ -158,6 +158,71 @@ class TestCreateMetadataEntry(unittest.TestCase):
             self.assertTrue(attached.exists())
             self.assertFalse(trash.exists())
 
+    def test_crossref_and_arxiv_metadata_parsing(self):
+        repo_root = Path(__file__).resolve().parents[1]
+        server = load_server(repo_root / "CODE" / "viewer_server.py")
+        crossref = server.parse_crossref_message(
+            {
+                "title": ["A <i>useful</i> paper"],
+                "author": [{"given": "Ada", "family": "Lovelace"}],
+                "container-title": ["Journal"],
+                "published-online": {"date-parts": [[2025, 4, 3]]},
+                "DOI": "10.1234/example",
+                "type": "journal-article",
+                "abstract": "<jats:p>An abstract.</jats:p>",
+            }
+        )
+        self.assertEqual(crossref["title"], "A useful paper")
+        self.assertEqual(crossref["publication_date"], "2025-04-03")
+        self.assertEqual(crossref["type"], "article")
+
+        arxiv = server.parse_arxiv_feed(
+            b'''<?xml version="1.0"?><feed xmlns="http://www.w3.org/2005/Atom"
+            xmlns:arxiv="http://arxiv.org/schemas/atom"><entry>
+            <id>http://arxiv.org/abs/2401.12345v2</id><title>Example title</title>
+            <published>2024-01-20T00:00:00Z</published><summary>Summary text</summary>
+            <author><name>First Author</name></author><arxiv:doi>10.1/test</arxiv:doi>
+            </entry></feed>'''
+        )
+        self.assertEqual(arxiv["arxiv"], "2401.12345v2")
+        self.assertEqual(arxiv["publication_date"], "2024-01-20")
+        self.assertEqual(arxiv["type"], "preprint")
+
+    def test_merge_entries_combines_metadata_pdf_and_undoes(self):
+        repo_root = Path(__file__).resolve().parents[1]
+        server = load_server(repo_root / "CODE" / "viewer_server.py")
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            root = Path(tmp_dir)
+            (root / "PDFs").mkdir()
+            server.ROOT = root
+            server.METADATA_FILE = root / "METADATA" / "metadata.csv"
+            server.ABSTRACTS_FILE = root / "METADATA" / "abstracts.csv"
+            server.SAVED_LISTS_DIR = root / "SAVED_LISTS"
+            server.CHANGE_BACKUP_DIR = root / "METADATA" / "backups" / "viewer_changes"
+            server._ABSTRACT_CACHE = {"mtime_ns": None, "data": {}}
+            source = server.create_metadata_entry(
+                {"title": "Duplicate", "type": "article", "keywords": "detector", "notes": "source note"}
+            )
+            target = server.create_metadata_entry(
+                {"title": "Preferred", "type": "article", "keywords": "physics"}
+            )
+            source_pdf = root / "PDFs" / f"{source['code']}.pdf"
+            source_pdf.write_bytes(b"%PDF-source")
+            server.set_abstract(source["code"], "Source abstract")
+            snapshot = server.create_change_snapshot("merge duplicate entries")
+            server.merge_metadata_entries(source["code"], target["code"], snapshot)
+
+            rows = server.load_metadata_rows()
+            self.assertEqual(len(rows), 1)
+            self.assertEqual(rows[0]["keywords"], "physics; detector")
+            self.assertIn("source note", rows[0]["notes"])
+            self.assertTrue((root / "PDFs" / f"{target['code']}.pdf").exists())
+            self.assertEqual(server.load_abstracts_map()[target["code"]], "Source abstract")
+
+            server.undo_last_change()
+            self.assertEqual(len(server.load_metadata_rows()), 2)
+            self.assertTrue(source_pdf.exists())
+
 
 if __name__ == "__main__":
     unittest.main()

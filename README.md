@@ -9,6 +9,7 @@ Local, git-friendly bibliography management with one canonical identifier per pa
 - PDF location is always derived, never stored: `PDFs/{code}.pdf`.
 - `metadata.csv` has no `file` column.
 - `pdf_hosts` records the computer or computers known to store the PDF, separated by semicolons.
+- `pdf_sha256` records the PDF content checksum so copies can be verified across computers.
 - `code` and PDF filename stem must match exactly.
 - Codes/filenames are underscore-only slugs (`a_z_0_9_`), never `-`.
 - Abstracts live in sidecar `METADATA/abstracts.csv` with exactly:
@@ -111,6 +112,12 @@ all PDFs it actually contains with:
 python3 CODE/bib.py mark-pdf-host
 ```
 
+Record checksums for local PDFs and report byte-identical duplicates with:
+
+```bash
+python3 CODE/bib.py checksums
+```
+
 For a one-time migration where every catalogued PDF is known to be on one machine:
 
 ```bash
@@ -132,7 +139,12 @@ python3 CODE/bib.py mark-pdf-host --host COMPUTER-NAME --all
 - One-step Undo backed by automatic snapshots in `METADATA/backups/viewer_changes/`.
 - `last_viewed` discovery history, a 30-day exclusion filter, and a one-entry Surprise me action.
 - Saved lists restore their stored filter selections.
+- Dynamic saved views re-run their filters against the latest catalog, so future matching entries appear automatically.
 - Type rename/merge management; merging removes the unused old type from selectors.
+- Duplicate-entry merge combines metadata, abstracts, saved-list membership, and PDF files while remaining undoable.
+- DOI and arXiv lookup fills the entry form from Crossref or arXiv metadata.
+- Per-entry and bulk citation tools copy or download formatted citations, BibTeX, and RIS.
+- SHA-256 PDF auditing detects changed files and byte-identical duplicates.
 - Per-paper notes editor persisted to `METADATA/metadata.csv` (`notes` column).
 - A metadata-only entry form for printed papers or references without a local PDF.
   Its publication month is optional, an exact day can be included when known, and

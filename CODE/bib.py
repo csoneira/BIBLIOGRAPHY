@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 import argparse
 import csv
+import hashlib
 import html
 import json
 import os
@@ -36,6 +37,7 @@ FIELDS = [
     "unread",
     "added_at",
     "pdf_hosts",
+    "pdf_sha256",
     "last_viewed",
     "notes",
 ]
@@ -144,6 +146,14 @@ def add_pdf_host(value: str, hostname: str) -> str:
     if hostname and hostname not in hosts:
         hosts.append(hostname)
     return "; ".join(hosts)
+
+
+def sha256_file(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
 
 
 def run_pdfinfo(path: Path) -> dict:
@@ -719,6 +729,7 @@ def scan_pdfs(dry_run: bool = False) -> list:
             "unread": prev.get("unread", ""),
             "added_at": prev.get("added_at", datetime.now(timezone.utc).strftime("%Y-%m-%d")),
             "pdf_hosts": add_pdf_host(prev.get("pdf_hosts", ""), socket.gethostname()),
+            "pdf_sha256": sha256_file(new_path),
             "last_viewed": prev.get("last_viewed", ""),
             "notes": prev.get("notes", ""),
         }
@@ -756,6 +767,28 @@ def mark_pdf_host(hostname: str, include_all: bool = False) -> int:
             updated += 1
     save_metadata(rows)
     print(f"Recorded {hostname} for {updated} PDF entries")
+    return updated
+
+
+def update_pdf_checksums() -> int:
+    rows = load_rows()
+    updated = 0
+    groups = {}
+    for row in rows:
+        path = row_pdf_path(row)
+        if not path.exists():
+            continue
+        checksum = sha256_file(path)
+        groups.setdefault(checksum, []).append(row.get("code", ""))
+        if row.get("pdf_sha256", "") != checksum:
+            row["pdf_sha256"] = checksum
+            updated += 1
+    save_metadata(rows)
+    duplicate_groups = [codes for codes in groups.values() if len(codes) > 1]
+    print(f"Updated checksums: {updated}")
+    print(f"Duplicate PDF groups: {len(duplicate_groups)}")
+    for codes in duplicate_groups:
+        print("  - " + ", ".join(codes))
     return updated
 
 
@@ -1453,6 +1486,7 @@ def main():
         action="store_true",
         help="Mark every catalog entry instead of only PDFs available locally",
     )
+    sub.add_parser("checksums", help="Record SHA-256 checksums and report duplicate PDFs")
 
     find = sub.add_parser("find", help="Filter metadata and list codes")
     find.add_argument("--from-year", type=int)
@@ -1549,6 +1583,9 @@ def main():
         return
     if args.command == "mark-pdf-host":
         mark_pdf_host(args.host, include_all=args.all)
+        return
+    if args.command == "checksums":
+        update_pdf_checksums()
         return
     if args.command == "abstracts":
         rebuild_abstracts(from_pdfs=args.from_pdfs, force=args.force)

@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
 import csv
+import hashlib
+import html
 import json
 import os
 import re
@@ -8,10 +10,13 @@ import socket
 import subprocess
 import tempfile
 import threading
+import xml.etree.ElementTree as ET
 from datetime import date, datetime, timezone
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from urllib.parse import parse_qs, urlparse
+from urllib.error import HTTPError, URLError
+from urllib.parse import parse_qs, quote, urlencode, urlparse
+from urllib.request import Request, urlopen
 
 ROOT = Path(__file__).resolve().parent.parent
 SAVED_LISTS_DIR = ROOT / "SAVED_LISTS"
@@ -35,6 +40,7 @@ METADATA_FIELDS = [
     "unread",
     "added_at",
     "pdf_hosts",
+    "pdf_sha256",
     "last_viewed",
     "notes",
 ]
@@ -142,6 +148,12 @@ def undo_last_change() -> dict:
     moved_to = ROOT / moved_pdf.get("to", "") if moved_pdf else None
     if moved_from and moved_to and moved_to.exists() and not moved_from.exists():
         moved_to.replace(moved_from)
+    for movement in reversed(manifest.get("pdf_moves", [])):
+        source = ROOT / movement.get("from", "")
+        destination = ROOT / movement.get("to", "")
+        if destination.exists() and not source.exists():
+            source.parent.mkdir(parents=True, exist_ok=True)
+            destination.replace(source)
 
     restored = snapshot.with_name(f"{snapshot.name}.restored")
     snapshot.rename(restored)
@@ -232,6 +244,7 @@ def create_metadata_entry(payload: dict) -> dict:
             "added_at": datetime.now(timezone.utc).strftime("%Y-%m-%d"),
             # Metadata-only entries deliberately have no recorded PDF host.
             "pdf_hosts": "",
+            "pdf_sha256": "",
             "last_viewed": "",
             "notes": str(payload.get("notes") or "").strip(),
         }
@@ -326,6 +339,221 @@ def update_entry_hosts(code: str, hosts: list) -> dict:
     raise LookupError("Entry not found")
 
 
+def sha256_file(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def write_abstracts_map(abstracts: dict) -> None:
+    ABSTRACTS_FILE.parent.mkdir(parents=True, exist_ok=True)
+    with tempfile.NamedTemporaryFile(
+        "w", dir=ABSTRACTS_FILE.parent, prefix=".abstracts-", suffix=".tmp",
+        delete=False, newline="", encoding="utf-8",
+    ) as handle:
+        temp_path = Path(handle.name)
+        writer = csv.DictWriter(handle, fieldnames=["code", "abstract"], lineterminator="\n")
+        writer.writeheader()
+        for code in sorted(abstracts):
+            value = str(abstracts[code] or "").strip()
+            if value:
+                writer.writerow({"code": code, "abstract": value})
+    os.replace(temp_path, ABSTRACTS_FILE)
+    _ABSTRACT_CACHE["mtime_ns"] = None
+
+
+def set_abstract(code: str, value: str) -> None:
+    abstracts = load_abstracts_map()
+    value = str(value or "").strip()
+    if value:
+        abstracts[code] = value
+    else:
+        abstracts.pop(code, None)
+    write_abstracts_map(abstracts)
+
+
+def merge_delimited_values(*values) -> str:
+    merged = []
+    seen = set()
+    for value in values:
+        for item in re.split(r"[;,]", str(value or "")):
+            item = item.strip()
+            if item and item.casefold() not in seen:
+                seen.add(item.casefold())
+                merged.append(item)
+    return "; ".join(merged)
+
+
+def merge_metadata_entries(source_code: str, target_code: str, snapshot: Path | None = None) -> dict:
+    source_code = str(source_code or "").strip()
+    target_code = str(target_code or "").strip()
+    if not source_code or not target_code or source_code == target_code:
+        raise ValueError("Choose two different entries")
+    rows = load_metadata_rows()
+    source = next((row for row in rows if row.get("code", "").strip() == source_code), None)
+    target = next((row for row in rows if row.get("code", "").strip() == target_code), None)
+    if source is None or target is None:
+        raise LookupError("Source or destination entry not found")
+
+    special = {"code", "keywords", "my_keywords", "pdf_hosts", "star", "unread", "notes", "added_at", "last_viewed"}
+    for field in METADATA_FIELDS:
+        if field not in special and not str(target.get(field) or "").strip() and str(source.get(field) or "").strip():
+            target[field] = source[field]
+    for field in ("keywords", "my_keywords", "pdf_hosts"):
+        target[field] = merge_delimited_values(target.get(field), source.get(field))
+    target["star"] = "1" if target.get("star") == "1" or source.get("star") == "1" else ""
+    target["unread"] = "1" if target.get("unread") == "1" or source.get("unread") == "1" else ""
+    target["added_at"] = min(filter(None, [target.get("added_at", ""), source.get("added_at", "")]), default="")
+    target["last_viewed"] = max(target.get("last_viewed", ""), source.get("last_viewed", ""))
+    source_notes = str(source.get("notes") or "").strip()
+    target_notes = str(target.get("notes") or "").strip()
+    if source_notes and source_notes not in target_notes:
+        target["notes"] = "\n\n".join(filter(None, [target_notes, source_notes]))
+
+    source_pdf = ROOT / "PDFs" / f"{source_code}.pdf"
+    target_pdf = ROOT / "PDFs" / f"{target_code}.pdf"
+    movements = []
+    if source_pdf.exists():
+        if not target_pdf.exists():
+            source_pdf.replace(target_pdf)
+            movements.append({"from": str(source_pdf.relative_to(ROOT)), "to": str(target_pdf.relative_to(ROOT))})
+            target["pdf_sha256"] = sha256_file(target_pdf)
+        else:
+            duplicate_dir = ROOT / "PDFs" / ".duplicates"
+            duplicate_dir.mkdir(parents=True, exist_ok=True)
+            suffix = "same" if sha256_file(source_pdf) == sha256_file(target_pdf) else "different"
+            duplicate_path = duplicate_dir / f"{snapshot.name if snapshot else 'merge'}-{suffix}-{source_pdf.name}"
+            source_pdf.replace(duplicate_path)
+            movements.append({"from": str(source_pdf.relative_to(ROOT)), "to": str(duplicate_path.relative_to(ROOT))})
+            target["pdf_sha256"] = sha256_file(target_pdf)
+
+    abstracts = load_abstracts_map()
+    if not abstracts.get(target_code, "").strip() and abstracts.get(source_code, "").strip():
+        abstracts[target_code] = abstracts[source_code]
+    abstracts.pop(source_code, None)
+    write_abstracts_map(abstracts)
+    for path in SAVED_LISTS_DIR.glob("*.json"):
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+        except json.JSONDecodeError:
+            continue
+        replaced = [target_code if code == source_code else code for code in data.get("codes", [])]
+        data["codes"] = list(dict.fromkeys(replaced))
+        path.write_text(json.dumps(data, indent=2), encoding="utf-8")
+    write_metadata_rows([row for row in rows if row is not source])
+    if snapshot and movements:
+        update_snapshot_manifest(snapshot, pdf_moves=movements)
+    return {"source": source_code, "target": target_code, "pdf_moves": len(movements)}
+
+
+def clean_markup(value: str) -> str:
+    return re.sub(r"\s+", " ", html.unescape(re.sub(r"<[^>]+>", " ", str(value or "")))).strip()
+
+
+def date_parts_to_text(parts) -> str:
+    if not parts:
+        return ""
+    parts = parts[0] if isinstance(parts[0], list) else parts
+    return "-".join(str(value).zfill(2) if index else str(value) for index, value in enumerate(parts[:3]))
+
+
+def parse_crossref_message(message: dict) -> dict:
+    authors = []
+    for author in message.get("author", []):
+        name = " ".join(filter(None, [author.get("given", ""), author.get("family", "")])).strip()
+        if name:
+            authors.append(name)
+    date_value = ""
+    for key in ("published-print", "published-online", "issued"):
+        date_value = date_parts_to_text(message.get(key, {}).get("date-parts", []))
+        if date_value:
+            break
+    type_map = {
+        "journal-article": "article", "book": "book", "book-chapter": "chapter",
+        "proceedings-article": "conference", "posted-content": "preprint",
+        "report": "report", "dissertation": "thesis",
+    }
+    return {
+        "title": clean_markup((message.get("title") or [""])[0]),
+        "author": "; ".join(authors),
+        "journal": clean_markup((message.get("container-title") or [""])[0]),
+        "publication_date": date_value, "doi": message.get("DOI", ""),
+        "type": type_map.get(message.get("type", ""), "article"),
+        "abstract": clean_markup(message.get("abstract", "")), "source": "Crossref",
+    }
+
+
+def parse_arxiv_feed(raw: bytes) -> dict:
+    root = ET.fromstring(raw)
+    ns = {"atom": "http://www.w3.org/2005/Atom", "arxiv": "http://arxiv.org/schemas/atom"}
+    entry = root.find("atom:entry", ns)
+    if entry is None:
+        raise LookupError("arXiv entry not found")
+
+    def text_at(path):
+        node = entry.find(path, ns)
+        return clean_markup(node.text if node is not None else "")
+
+    authors = [clean_markup(node.findtext("atom:name", default="", namespaces=ns)) for node in entry.findall("atom:author", ns)]
+    return {
+        "title": text_at("atom:title"), "author": "; ".join(filter(None, authors)),
+        "journal": text_at("arxiv:journal_ref"), "publication_date": text_at("atom:published")[:10],
+        "doi": text_at("arxiv:doi"), "type": "preprint", "abstract": text_at("atom:summary"),
+        "arxiv": text_at("atom:id").rsplit("/abs/", 1)[-1], "source": "arXiv",
+    }
+
+
+def lookup_reference(identifier: str) -> dict:
+    identifier = str(identifier or "").strip()
+    if not identifier:
+        raise ValueError("Enter a DOI or arXiv identifier")
+    is_arxiv = "arxiv" in identifier.lower() or bool(re.fullmatch(r"\d{4}\.\d{4,5}(?:v\d+)?", identifier))
+    if is_arxiv:
+        arxiv_id = re.sub(r"^.*?(?:arxiv:|/abs/|/pdf/)", "", identifier, flags=re.IGNORECASE).removesuffix(".pdf")
+        url = "https://export.arxiv.org/api/query?" + urlencode({"id_list": arxiv_id, "max_results": 1})
+        request = Request(url, headers={"User-Agent": "BIBLIOGRAPHY-workbench/1.0 (mailto:csoneira@ucm.es)"})
+        with urlopen(request, timeout=20) as response:
+            return parse_arxiv_feed(response.read())
+    doi = normalize_doi(identifier)
+    if not doi.startswith("10."):
+        raise ValueError("This does not look like a DOI or arXiv identifier")
+    request = Request(
+        f"https://api.crossref.org/works/{quote(doi, safe='')}",
+        headers={"Accept": "application/json", "User-Agent": "BIBLIOGRAPHY-workbench/1.0 (mailto:csoneira@ucm.es)"},
+    )
+    with urlopen(request, timeout=20) as response:
+        return parse_crossref_message(json.loads(response.read().decode("utf-8"))["message"])
+
+
+def audit_pdfs(update_missing: bool = False) -> dict:
+    rows = load_metadata_rows()
+    entries, groups = [], {}
+    changed = False
+    for row in rows:
+        path = ROOT / "PDFs" / f"{row.get('code', '').strip()}.pdf"
+        if not path.exists():
+            continue
+        actual = sha256_file(path)
+        expected = (row.get("pdf_sha256") or "").strip()
+        status = "ok" if expected == actual else ("unrecorded" if not expected else "mismatch")
+        if update_missing and not expected:
+            row["pdf_sha256"] = actual
+            status, changed = "recorded", True
+        entries.append({"code": row.get("code", ""), "status": status, "expected": expected, "actual": actual})
+        groups.setdefault(actual, []).append(row.get("code", ""))
+    if changed:
+        write_metadata_rows(rows)
+    return {
+        "entries": entries, "duplicates": [codes for codes in groups.values() if len(codes) > 1],
+        "summary": {"local": len(entries),
+                    "ok": sum(item["status"] in {"ok", "recorded"} for item in entries),
+                    "unrecorded": sum(item["status"] == "unrecorded" for item in entries),
+                    "mismatch": sum(item["status"] == "mismatch" for item in entries)},
+    }
+
+
 def mark_entry_viewed(code: str) -> str:
     rows = load_metadata_rows()
     viewed_at = datetime.now(timezone.utc).strftime("%Y-%m-%d")
@@ -397,6 +625,7 @@ class Handler(SimpleHTTPRequestHandler):
                 "/abstracts",
                 "/abstract",
                 "/pdf-status",
+                "/pdf-audit",
                 "/save-list",
                 "/save-notes",
                 "/create-entry",
@@ -406,6 +635,8 @@ class Handler(SimpleHTTPRequestHandler):
                 "/set-pdf-hosts",
                 "/mark-viewed",
                 "/manage-type",
+                "/merge-entries",
+                "/lookup-reference",
                 "/undo-last-change",
                 "/toggle-star",
                 "/toggle-unread",
@@ -441,6 +672,9 @@ class Handler(SimpleHTTPRequestHandler):
         if parsed.path == "/pdf-status":
             self._handle_pdf_status()
             return
+        if parsed.path == "/pdf-audit":
+            self._handle_pdf_audit()
+            return
         super().do_GET()
 
     def do_POST(self):
@@ -468,6 +702,12 @@ class Handler(SimpleHTTPRequestHandler):
                 return
             if path == "/manage-type":
                 self._handle_manage_type()
+                return
+            if path == "/merge-entries":
+                self._handle_merge_entries()
+                return
+            if path == "/lookup-reference":
+                self._handle_lookup_reference()
                 return
             if path == "/undo-last-change":
                 self._handle_undo_last_change()
@@ -497,6 +737,7 @@ class Handler(SimpleHTTPRequestHandler):
         name = payload.get("name", "").strip()
         codes = payload.get("codes", [])
         filters = payload.get("filters", {})
+        dynamic = bool(payload.get("dynamic"))
 
         if not name:
             self.send_error(400, "Missing name")
@@ -516,6 +757,7 @@ class Handler(SimpleHTTPRequestHandler):
                 "name": name,
                 "filters": filters,
                 "codes": codes,
+                "dynamic": dynamic,
             }
             path.write_text(json.dumps(data, indent=2), encoding="utf-8")
 
@@ -537,6 +779,8 @@ class Handler(SimpleHTTPRequestHandler):
             with _WRITE_LOCK:
                 snapshot = create_change_snapshot("create entry")
                 row = create_metadata_entry(payload)
+                if "abstract" in payload:
+                    set_abstract(row["code"], payload.get("abstract", ""))
         except json.JSONDecodeError:
             self.send_error(400, "Invalid JSON")
             return
@@ -567,6 +811,8 @@ class Handler(SimpleHTTPRequestHandler):
             with _WRITE_LOCK:
                 snapshot = create_change_snapshot("update entry")
                 row = update_metadata_entry(payload)
+                if "abstract" in payload:
+                    set_abstract(row["code"], payload.get("abstract", ""))
         except DuplicateEntryError as exc:
             if "snapshot" in locals():
                 discard_snapshot(snapshot)
@@ -667,6 +913,7 @@ class Handler(SimpleHTTPRequestHandler):
                 remaining = content_length
                 first = True
                 valid_pdf = False
+                digest = hashlib.sha256()
                 while remaining:
                     chunk = self.rfile.read(min(64 * 1024, remaining))
                     if not chunk:
@@ -675,6 +922,7 @@ class Handler(SimpleHTTPRequestHandler):
                         valid_pdf = chunk.lstrip().startswith(b"%PDF-")
                         first = False
                     handle.write(chunk)
+                    digest.update(chunk)
                     remaining -= len(chunk)
             if remaining or not valid_pdf:
                 temp_path.unlink(missing_ok=True)
@@ -684,8 +932,13 @@ class Handler(SimpleHTTPRequestHandler):
             temp_path.replace(target)
             hosts = [host.strip() for host in (row.get("pdf_hosts") or "").split(";")]
             update_entry_hosts(code, hosts + [socket.gethostname()])
+            rows = load_metadata_rows()
+            for candidate in rows:
+                if candidate.get("code", "").strip() == code:
+                    candidate["pdf_sha256"] = digest.hexdigest()
+            write_metadata_rows(rows)
             update_snapshot_manifest(snapshot, created_pdf=str(target.relative_to(ROOT)))
-        self._send_json({"code": code, "hostname": socket.gethostname()})
+        self._send_json({"code": code, "hostname": socket.gethostname(), "sha256": digest.hexdigest()})
 
     def _handle_set_pdf_hosts(self):
         try:
@@ -742,6 +995,47 @@ class Handler(SimpleHTTPRequestHandler):
             return
         self._send_json({"updated": count})
 
+    def _handle_merge_entries(self):
+        try:
+            payload = self._read_json_payload()
+            with _WRITE_LOCK:
+                snapshot = create_change_snapshot("merge duplicate entries")
+                result = merge_metadata_entries(
+                    payload.get("source", ""), payload.get("target", ""), snapshot
+                )
+        except (json.JSONDecodeError, ValueError) as exc:
+            if "snapshot" in locals():
+                discard_snapshot(snapshot)
+            self.send_error(400, str(exc))
+            return
+        except LookupError as exc:
+            if "snapshot" in locals():
+                discard_snapshot(snapshot)
+            self.send_error(404, str(exc))
+            return
+        self._send_json(result)
+
+    def _handle_lookup_reference(self):
+        try:
+            payload = self._read_json_payload()
+            result = lookup_reference(payload.get("identifier", ""))
+        except (json.JSONDecodeError, ValueError) as exc:
+            self.send_error(400, str(exc))
+            return
+        except LookupError as exc:
+            self.send_error(404, str(exc))
+            return
+        except HTTPError as exc:
+            self.send_error(
+                404 if exc.code == 404 else 502,
+                "Reference service did not return this item",
+            )
+            return
+        except (URLError, TimeoutError, ET.ParseError, KeyError):
+            self.send_error(502, "Reference service is temporarily unavailable")
+            return
+        self._send_json(result)
+
     def _handle_undo_last_change(self):
         try:
             with _WRITE_LOCK:
@@ -765,6 +1059,7 @@ class Handler(SimpleHTTPRequestHandler):
                     "name": data.get("name", path.stem),
                     "codes": data.get("codes", []),
                     "filters": data.get("filters", {}),
+                    "dynamic": bool(data.get("dynamic")),
                 }
             )
 
@@ -788,6 +1083,9 @@ class Handler(SimpleHTTPRequestHandler):
         pdf_dir = ROOT / "PDFs"
         local_codes = sorted(path.stem for path in pdf_dir.glob("*.pdf"))
         self._send_json({"hostname": socket.gethostname(), "local_codes": local_codes})
+
+    def _handle_pdf_audit(self):
+        self._send_json(audit_pdfs(update_missing=False))
 
     def _handle_toggle_star(self):
         self._handle_toggle_flag("star")

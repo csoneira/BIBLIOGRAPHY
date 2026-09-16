@@ -394,6 +394,20 @@ function renderResults(rows) {
       editButton.addEventListener("click", () => startEditingEntry(row));
       manageActions.appendChild(editButton);
 
+      const citeButton = document.createElement("button");
+      citeButton.className = "secondary compact";
+      citeButton.textContent = "Copy citation";
+      citeButton.addEventListener("click", async () => {
+        try {
+          await copyText(formattedCitation(row));
+          citeButton.textContent = "Copied";
+          window.setTimeout(() => { citeButton.textContent = "Copy citation"; }, 1200);
+        } catch (err) {
+          alert("Could not copy the citation.");
+        }
+      });
+      manageActions.appendChild(citeButton);
+
       if (!row.is_local) {
         const attachButton = document.createElement("button");
         attachButton.className = "secondary compact";
@@ -635,11 +649,12 @@ async function saveNotesOnServer(code, notes) {
   return response.json();
 }
 
-async function saveListToServer(name, rows, filters) {
+async function saveListToServer(name, rows, filters, dynamic = false) {
   const payload = {
     name,
     filters,
-    codes: rows.map((row) => row.code).filter(Boolean),
+    codes: dynamic ? [] : rows.map((row) => row.code).filter(Boolean),
+    dynamic,
   };
   const response = await fetch("/save-list", {
     method: "POST",
@@ -650,6 +665,68 @@ async function saveListToServer(name, rows, filters) {
     throw new Error("Server did not accept the list.");
   }
   return response.json();
+}
+
+function citationAuthors(row) {
+  return (row.author || "").split(/\s*;\s*/).filter(Boolean);
+}
+
+function formattedCitation(row) {
+  const authors = citationAuthors(row).join(", ");
+  const date = row.publication_date || row.year || "n.d.";
+  const doi = row.doi ? ` https://doi.org/${row.doi.replace(/^https?:\/\/(?:dx\.)?doi\.org\//i, "")}` : "";
+  return `${authors ? `${authors} ` : ""}(${date}). ${row.title || "Untitled"}${row.journal ? `. ${row.journal}` : ""}.${doi}`;
+}
+
+function bibtexCitation(row) {
+  const typeMap = { article: "article", book: "book", chapter: "incollection", thesis: "phdthesis", conference: "inproceedings" };
+  const type = typeMap[(row.type || "").toLowerCase()] || "misc";
+  const fields = [
+    ["title", row.title], ["author", citationAuthors(row).join(" and ")],
+    ["journal", row.journal], ["year", (row.publication_date || row.year || "").slice(0, 4)],
+    ["date", row.publication_date], ["doi", row.doi], ["keywords", row.keywords],
+  ].filter(([, value]) => value);
+  return `@${type}{${row.code || "reference"},\n${fields.map(([key, value]) => `  ${key} = {${value}}`).join(",\n")}\n}`;
+}
+
+function risCitation(row) {
+  const typeMap = { article: "JOUR", book: "BOOK", chapter: "CHAP", thesis: "THES", conference: "CPAPER", preprint: "UNPB" };
+  const lines = [`TY  - ${typeMap[(row.type || "").toLowerCase()] || "GEN"}`, `TI  - ${row.title || "Untitled"}`];
+  citationAuthors(row).forEach((author) => lines.push(`AU  - ${author}`));
+  if (row.publication_date || row.year) lines.push(`PY  - ${row.publication_date || row.year}`);
+  if (row.journal) lines.push(`JO  - ${row.journal}`);
+  if (row.doi) lines.push(`DO  - ${row.doi}`);
+  lines.push("ER  - ");
+  return lines.join("\n");
+}
+
+function citationsText(rows, format) {
+  const formatter = format === "bibtex" ? bibtexCitation : format === "ris" ? risCitation : formattedCitation;
+  return rows.map(formatter).join("\n\n");
+}
+
+async function copyText(text) {
+  if (navigator.clipboard && window.isSecureContext) {
+    await navigator.clipboard.writeText(text);
+    return;
+  }
+  const area = document.createElement("textarea");
+  area.value = text;
+  document.body.appendChild(area);
+  area.select();
+  document.execCommand("copy");
+  area.remove();
+}
+
+function setupEntryMergeOptions(rows) {
+  const datalist = document.getElementById("knownEntries");
+  datalist.innerHTML = "";
+  rows.forEach((row) => {
+    const option = document.createElement("option");
+    option.value = row.code;
+    option.label = row.title || row.code;
+    datalist.appendChild(option);
+  });
 }
 
 async function createEntryOnServer(payload) {
@@ -761,6 +838,7 @@ function startEditingEntry(row) {
   document.getElementById("entryDoi").value = row.doi || "";
   document.getElementById("entryKeywords").value = row.keywords || "";
   document.getElementById("entryMyKeywords").value = row.my_keywords || "";
+  document.getElementById("entryAbstract").value = row.abstract || "";
   document.getElementById("entryNotes").value = row.notes || "";
   document.getElementById("entryUnread").checked = row.unread === "1";
   document.getElementById("entryStar").checked = row.star === "1";
@@ -781,6 +859,8 @@ function resetEntryForm() {
   form.dataset.mode = "create";
   form.dataset.legacyYear = "";
   document.getElementById("entryCode").value = "";
+  document.getElementById("entryLookup").value = "";
+  document.getElementById("entryAbstract").value = "";
   document.getElementById("entryType").value = [...document.getElementById("entryType").options]
     .some((option) => option.value === "article") ? "article" : document.getElementById("entryType").value;
   setPublicationDateInputs("");
@@ -915,7 +995,7 @@ async function loadSavedLists() {
     lists.forEach((list) => {
       const option = document.createElement("option");
       option.value = list.filename;
-      option.textContent = list.name || list.filename;
+      option.textContent = `${list.dynamic ? "View" : "List"}: ${list.name || list.filename}`;
       select.appendChild(option);
     });
     return lists;
@@ -934,6 +1014,7 @@ async function init() {
     setupFilterTypeOptions(rows);
     setupEntryTypeOptions(rows);
     setupTypeManager(rows);
+    setupEntryMergeOptions(rows);
     setupPublicationDateInputs();
     resetEntryForm();
     updateDashboard(rows);
@@ -965,8 +1046,9 @@ async function init() {
       }
       setFilters(selectedList.filters || {});
       const restoredFilters = getFilters();
+      const baseRows = selectedList.dynamic ? rows : applySavedList(rows, selectedList);
       filteredRows = sortRows(
-        applyFilters(applySavedList(rows, selectedList), restoredFilters),
+        applyFilters(baseRows, restoredFilters),
         restoredFilters.addedSort,
       );
       renderResults(filteredRows);
@@ -992,6 +1074,82 @@ async function init() {
         alert(`Undid: ${result.action}`);
         window.location.reload();
       } catch (err) {
+        alert(err.message);
+      }
+    });
+
+    document.getElementById("auditBtn").addEventListener("click", async () => {
+      const button = document.getElementById("auditBtn");
+      button.disabled = true;
+      button.textContent = "Checking…";
+      try {
+        const response = await fetch(freshUrl("/pdf-audit"), { cache: "no-store" });
+        if (!response.ok) throw new Error("Audit failed");
+        const audit = await response.json();
+        const duplicateText = audit.duplicates.length
+          ? `\nDuplicate-file groups:\n${audit.duplicates.map((codes) => codes.join(", ")).join("\n")}`
+          : "\nNo duplicate local PDF files.";
+        alert(`Local PDFs: ${audit.summary.local}\nChecksums OK: ${audit.summary.ok}\nNot yet recorded: ${audit.summary.unrecorded}\nChanged/mismatched: ${audit.summary.mismatch}${duplicateText}`);
+      } catch (err) {
+        alert("Could not audit local PDFs. Keep the viewer server running.");
+      } finally {
+        button.disabled = false;
+        button.textContent = "Audit PDFs";
+      }
+    });
+
+    document.getElementById("lookupBtn").addEventListener("click", async () => {
+      const identifier = document.getElementById("entryLookup").value.trim();
+      const status = document.getElementById("entryStatus");
+      if (!identifier) {
+        alert("Enter a DOI or arXiv identifier first.");
+        return;
+      }
+      status.textContent = "Looking up metadata…";
+      try {
+        const item = await postJson("/lookup-reference", { identifier });
+        document.getElementById("entryTitle").value = item.title || "";
+        document.getElementById("entryAuthor").value = item.author || "";
+        document.getElementById("entryJournal").value = item.journal || "";
+        document.getElementById("entryDoi").value = item.doi || "";
+        document.getElementById("entryAbstract").value = item.abstract || "";
+        setPublicationDateInputs(item.publication_date || "");
+        const typeSelect = document.getElementById("entryType");
+        if ([...typeSelect.options].some((option) => option.value === item.type)) {
+          typeSelect.value = item.type;
+          document.getElementById("entryNewTypeContainer").hidden = true;
+        } else {
+          typeSelect.value = "__new__";
+          document.getElementById("entryNewType").value = item.type || "article";
+          document.getElementById("entryNewTypeContainer").hidden = false;
+        }
+        status.textContent = `Filled from ${item.source}`;
+      } catch (err) {
+        status.textContent = "Lookup failed";
+        alert(err.message);
+      }
+    });
+
+    document.getElementById("mergeEntriesBtn").addEventListener("click", async () => {
+      const source = document.getElementById("mergeSource").value.trim();
+      const target = document.getElementById("mergeTarget").value.trim();
+      if (!source || !target || source === target) {
+        alert("Choose two different entry codes.");
+        return;
+      }
+      const sourceRow = rows.find((row) => row.code === source);
+      const targetRow = rows.find((row) => row.code === target);
+      if (!sourceRow || !targetRow) {
+        alert("Select entries from the suggestions so their exact codes are used.");
+        return;
+      }
+      if (!confirm(`Merge “${sourceRow.title}” into “${targetRow.title}”? The second entry will be kept.`)) return;
+      try {
+        await postJson("/merge-entries", { source, target });
+        document.getElementById("mergeEntriesStatus").textContent = "Merged successfully";
+        window.setTimeout(() => window.location.reload(), 500);
+      } catch (err) {
+        document.getElementById("mergeEntriesStatus").textContent = "Merge failed";
         alert(err.message);
       }
     });
@@ -1051,6 +1209,47 @@ async function init() {
       }
     });
 
+    document.getElementById("saveViewBtn").addEventListener("click", async () => {
+      const name = prompt("Name for this dynamic view:");
+      if (!name) return;
+      try {
+        await saveListToServer(name.trim(), [], getFilters(), true);
+        alert("Dynamic view saved. It will include future entries that match these filters.");
+        window.location.reload();
+      } catch (err) {
+        alert("Could not save the dynamic view.");
+      }
+    });
+
+    document.getElementById("copyCitationsBtn").addEventListener("click", async () => {
+      if (!filteredRows.length) {
+        alert("No results to cite.");
+        return;
+      }
+      const format = document.getElementById("citationFormat").value;
+      try {
+        await copyText(citationsText(filteredRows, format));
+        alert(`Copied ${filteredRows.length} citation${filteredRows.length === 1 ? "" : "s"}.`);
+      } catch (err) {
+        alert("Could not copy citations.");
+      }
+    });
+
+    document.getElementById("downloadCitationsBtn").addEventListener("click", () => {
+      if (!filteredRows.length) {
+        alert("No results to cite.");
+        return;
+      }
+      const format = document.getElementById("citationFormat").value;
+      const extension = format === "bibtex" ? "bib" : format === "ris" ? "ris" : "txt";
+      const blob = new Blob([citationsText(filteredRows, format)], { type: "text/plain;charset=utf-8" });
+      const link = document.createElement("a");
+      link.href = URL.createObjectURL(blob);
+      link.download = `bibliography-citations.${extension}`;
+      link.click();
+      URL.revokeObjectURL(link.href);
+    });
+
     document.getElementById("entryForm").addEventListener("submit", async (event) => {
       event.preventDefault();
       const button = document.getElementById("createEntryBtn");
@@ -1074,6 +1273,7 @@ async function init() {
         doi: document.getElementById("entryDoi").value,
         keywords: document.getElementById("entryKeywords").value,
         my_keywords: document.getElementById("entryMyKeywords").value,
+        abstract: document.getElementById("entryAbstract").value,
         notes: document.getElementById("entryNotes").value,
         unread: document.getElementById("entryUnread").checked,
         star: document.getElementById("entryStar").checked,

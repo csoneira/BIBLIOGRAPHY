@@ -288,6 +288,19 @@
         margin-top: 16px;
       }
 
+      .wide-field {
+        grid-column: 1 / -1;
+      }
+
+      .inline-tool {
+        display: flex;
+        gap: 8px;
+      }
+
+      .inline-tool input {
+        flex: 1;
+      }
+
       .star {
         background: transparent;
         color: var(--accent);
@@ -490,6 +503,7 @@
       <div class="dashboard-item"><strong id="countMultiple">–</strong>Multiple computers</div>
       <div class="dashboard-item dashboard-actions">
         <button class="secondary compact" id="undoBtn" type="button">Undo last change</button>
+        <button class="secondary compact" id="auditBtn" type="button">Audit PDFs</button>
       </div>
     </section>
 
@@ -574,7 +588,15 @@
         <button class="secondary" id="resetBtn">Reset</button>
         <button class="secondary" id="loadListBtn">Load list</button>
         <button class="secondary" id="saveBtn">Save list</button>
+        <button class="secondary" id="saveViewBtn">Save dynamic view</button>
         <button class="secondary" id="surpriseBtn">Surprise me</button>
+        <select id="citationFormat" aria-label="Citation format" style="width: auto">
+          <option value="formatted">Formatted citation</option>
+          <option value="bibtex">BibTeX</option>
+          <option value="ris">RIS</option>
+        </select>
+        <button class="secondary" id="copyCitationsBtn">Copy results</button>
+        <button class="secondary" id="downloadCitationsBtn">Download citations</button>
         <label class="action-check"><input id="hideRecent" type="checkbox" /> Exclude entries viewed in the last 30 days</label>
       </div>
     </section>
@@ -584,6 +606,13 @@
       <form class="entry-form" id="entryForm">
         <input id="entryCode" type="hidden" />
         <div class="filters">
+          <div class="wide-field">
+            <label for="entryLookup">Fill from DOI or arXiv</label>
+            <div class="inline-tool">
+              <input id="entryLookup" type="text" placeholder="10.xxxx/... or arXiv:2401.12345" />
+              <button class="secondary" id="lookupBtn" type="button">Look up</button>
+            </div>
+          </div>
           <div>
             <label for="entryTitle">Title *</label>
             <input id="entryTitle" name="title" type="text" required />
@@ -630,6 +659,10 @@
           </div>
         </div>
         <div>
+          <label for="entryAbstract">Abstract</label>
+          <textarea id="entryAbstract" name="abstract"></textarea>
+        </div>
+        <div>
           <label for="entryNotes">Notes</label>
           <textarea id="entryNotes" name="notes"></textarea>
         </div>
@@ -643,6 +676,26 @@
           <span class="entry-status" id="entryStatus"></span>
         </div>
       </form>
+    </details>
+
+    <details class="entry-panel">
+      <summary>Merge duplicate entries</summary>
+      <div class="type-manager-row">
+        <div>
+          <label for="mergeSource">Duplicate to remove</label>
+          <input id="mergeSource" type="text" list="knownEntries" placeholder="Start typing a title or code" />
+        </div>
+        <div>
+          <label for="mergeTarget">Entry to keep</label>
+          <input id="mergeTarget" type="text" list="knownEntries" placeholder="Start typing a title or code" />
+          <datalist id="knownEntries"></datalist>
+        </div>
+      </div>
+      <div class="actions">
+        <button class="danger" id="mergeEntriesBtn" type="button">Merge entries</button>
+        <span class="entry-status" id="mergeEntriesStatus"></span>
+      </div>
+      <p>The destination keeps its existing values; missing fields, tags, notes, abstract, PDF locations, and files are safely combined. Undo remains available.</p>
     </details>
 
     <details class="entry-panel">
