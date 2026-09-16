@@ -555,8 +555,6 @@ function updateResultSummary(rows) {
     resultCountNotAdded: `${notAdded} / ${totalNotAdded}`,
     resultCountStarred: `${starred} / ${totalStarred}`,
     resultCountUnread: `${unread} / ${totalUnread}`,
-    resultBarIncluded: rows.length,
-    resultBarExcluded: excluded,
   };
   Object.entries(counts).forEach(([id, count]) => {
     const element = document.getElementById(id);
@@ -918,10 +916,6 @@ function updateDashboard(rows) {
   const local = rows.filter((row) => row.pdf_status === "local").length;
   const remote = rows.filter((row) => row.pdf_status === "remote").length;
   const notAdded = rows.filter((row) => row.pdf_status === "not_added").length;
-  document.getElementById("countTotal").textContent = rows.length;
-  document.getElementById("countLocal").textContent = local;
-  document.getElementById("countRemote").textContent = remote;
-  document.getElementById("countNotAdded").textContent = notAdded;
   [
     ["libraryLocalBar", local],
     ["libraryRemoteBar", remote],

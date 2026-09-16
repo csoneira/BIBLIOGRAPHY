@@ -91,19 +91,6 @@
         box-shadow: var(--shadow);
       }
 
-      .library-total {
-        display: flex;
-        align-items: baseline;
-        gap: 8px;
-        margin-bottom: 10px;
-        color: var(--muted);
-      }
-
-      .library-total strong {
-        color: var(--accent);
-        font-size: 24px;
-      }
-
       .library-bar {
         display: flex;
         width: 100%;
@@ -127,32 +114,6 @@
       .library-not-added { background: #b84b45; }
       .filter-excluded { background: #a6adb3; }
 
-      .library-legend {
-        display: flex;
-        gap: 10px 20px;
-        flex-wrap: wrap;
-        margin-top: 10px;
-        color: var(--muted);
-        font-size: 13px;
-      }
-
-      .library-legend-item {
-        display: flex;
-        align-items: center;
-        gap: 6px;
-      }
-
-      .library-legend-item strong {
-        color: var(--ink);
-        font-size: 15px;
-      }
-
-      .library-swatch {
-        width: 10px;
-        height: 10px;
-        border-radius: 3px;
-      }
-
       .result-summary {
         display: grid;
         grid-template-columns: repeat(auto-fit, minmax(105px, 1fr));
@@ -168,19 +129,6 @@
         margin-bottom: 18px;
         padding-bottom: 18px;
         border-bottom: 1px solid #ddd5cd;
-      }
-
-      .filtered-bar-caption {
-        display: flex;
-        justify-content: space-between;
-        gap: 12px;
-        margin-bottom: 7px;
-        color: var(--muted);
-        font-size: 13px;
-      }
-
-      .filtered-bar-caption strong {
-        color: var(--ink);
       }
 
       .result-summary-item {
@@ -751,23 +699,13 @@
 
     <section class="panel" aria-label="Filtered results overview">
       <div class="global-bar-block">
-        <div class="library-total"><strong id="countTotal">–</strong><span>Total entries</span></div>
         <div class="library-bar" id="libraryBar" role="img" aria-label="PDF availability">
           <span class="library-bar-segment library-local" id="libraryLocalBar"></span>
           <span class="library-bar-segment library-remote" id="libraryRemoteBar"></span>
           <span class="library-bar-segment library-not-added" id="libraryNotAddedBar"></span>
         </div>
-        <div class="library-legend">
-          <span class="library-legend-item"><span class="library-swatch library-local"></span><strong id="countLocal">–</strong>Local</span>
-          <span class="library-legend-item"><span class="library-swatch library-remote"></span><strong id="countRemote">–</strong>Remote</span>
-          <span class="library-legend-item"><span class="library-swatch library-not-added"></span><strong id="countNotAdded">–</strong>Not added</span>
-        </div>
       </div>
       <div class="filtered-bar-block">
-        <div class="filtered-bar-caption">
-          <span><strong id="resultBarIncluded">–</strong> references shown</span>
-          <span><strong id="resultBarExcluded">–</strong> left out</span>
-        </div>
         <div class="library-bar" id="filteredResultsBar" role="img" aria-label="Filtered bibliography results">
           <span class="library-bar-segment library-local" id="resultLocalBar"></span>
           <span class="library-bar-segment library-remote" id="resultRemoteBar"></span>
