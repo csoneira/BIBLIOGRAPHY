@@ -185,6 +185,26 @@ async function init() {
       } catch (error) { alert(error.message); }
     });
 
+    document.getElementById("auditBtn").addEventListener("click", async () => {
+      const button = document.getElementById("auditBtn");
+      button.disabled = true;
+      button.textContent = "Checking…";
+      try {
+        const response = await fetch(freshUrl("/pdf-audit"), { cache: "no-store" });
+        if (!response.ok) throw new Error("Audit failed");
+        const audit = await response.json();
+        const duplicateText = audit.duplicates.length
+          ? `\nDuplicate-file groups:\n${audit.duplicates.map((codes) => codes.join(", ")).join("\n")}`
+          : "\nNo duplicate local PDF files.";
+        alert(`Local PDFs: ${audit.summary.local}\nChecksums OK: ${audit.summary.ok}\nNot yet recorded: ${audit.summary.unrecorded}\nChanged/mismatched: ${audit.summary.mismatch}${duplicateText}`);
+      } catch (error) {
+        alert("Could not audit local PDFs. Keep the viewer server running.");
+      } finally {
+        button.disabled = false;
+        button.textContent = "Audit PDFs";
+      }
+    });
+
     document.getElementById("lookupBtn").addEventListener("click", async () => {
       const identifier = document.getElementById("entryLookup").value.trim();
       const status = document.getElementById("entryStatus");
