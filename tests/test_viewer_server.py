@@ -254,6 +254,16 @@ class TestCreateMetadataEntry(unittest.TestCase):
             server.undo_last_change()
             self.assertTrue(original.exists())
 
+    def test_wallpaper_image_validation(self):
+        repo_root = Path(__file__).resolve().parents[1]
+        server = load_server(repo_root / "CODE" / "viewer_server.py")
+        self.assertEqual(server.detect_image_extension(b"\xff\xd8\xfftest"), ".jpg")
+        self.assertEqual(server.detect_image_extension(b"\x89PNG\r\n\x1a\ntest"), ".png")
+        self.assertEqual(server.detect_image_extension(b"RIFF1234WEBPtest"), ".webp")
+        self.assertEqual(server.safe_wallpaper_stem("My Nice Picture.PNG"), "my_nice_picture")
+        with self.assertRaises(ValueError):
+            server.detect_image_extension(b"not-an-image")
+
 
 if __name__ == "__main__":
     unittest.main()

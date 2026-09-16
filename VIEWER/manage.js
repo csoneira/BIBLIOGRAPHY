@@ -179,15 +179,69 @@ function setupSavedFilterManager(filters) {
   updateSelection();
 }
 
-function setupWallpaperOptions() {
+async function setupWallpaperOptions() {
   const wallpaper = window.bibliographyWallpaper;
   if (!wallpaper) return;
+  try {
+    const response = await fetch(freshUrl("/wallpapers"), { cache: "no-store" });
+    if (response.ok) {
+      const customContainer = document.getElementById("customWallpaperOptions");
+      const data = await response.json();
+      (data.custom || []).forEach((item) => {
+        const label = document.createElement("label");
+        label.className = "wallpaper-option";
+        const preview = document.createElement("span");
+        preview.className = "wallpaper-preview";
+        preview.style.backgroundImage = `url("${item.url}")`;
+        const input = document.createElement("input");
+        input.type = "radio";
+        input.name = "wallpaper";
+        input.value = item.id;
+        label.appendChild(preview);
+        label.appendChild(input);
+        label.appendChild(document.createTextNode(` ${item.name}`));
+        customContainer.appendChild(label);
+      });
+    }
+  } catch (error) {
+    document.getElementById("wallpaperUploadStatus").textContent = "Custom pictures unavailable";
+  }
   const current = wallpaper.current();
   document.querySelectorAll('input[name="wallpaper"]').forEach((input) => {
     input.checked = input.value === current;
     input.addEventListener("change", () => {
       if (input.checked) wallpaper.save(input.value);
     });
+  });
+  const transparency = document.getElementById("wallpaperTransparency");
+  const transparencyValue = document.getElementById("wallpaperTransparencyValue");
+  transparency.value = wallpaper.currentTransparency();
+  transparencyValue.value = `${transparency.value}%`;
+  transparency.addEventListener("input", () => {
+    transparencyValue.value = `${transparency.value}%`;
+    wallpaper.saveTransparency(transparency.value);
+  });
+
+  document.getElementById("uploadWallpaperBtn").addEventListener("click", async () => {
+    const file = document.getElementById("customWallpaperUpload").files[0];
+    const status = document.getElementById("wallpaperUploadStatus");
+    if (!file) { alert("Choose a JPEG, PNG, or WebP image first."); return; }
+    status.textContent = "Uploading…";
+    try {
+      const response = await fetch(`/upload-wallpaper?name=${encodeURIComponent(file.name)}`, {
+        method: "POST",
+        headers: { "Content-Type": file.type || "application/octet-stream" },
+        body: file,
+      });
+      if (!response.ok) throw new Error(await response.text() || "Upload failed");
+      const item = await response.json();
+      wallpaper.save(item.id);
+      status.textContent = "Picture added";
+      window.setTimeout(() => location.reload(), 400);
+    } catch (error) {
+      status.textContent = "Upload failed";
+      alert(error.message);
+    }
   });
 }
 
@@ -198,7 +252,7 @@ async function init() {
     setupTypes(rows);
     setupEntries(rows);
     setupSavedFilterManager(savedFilters);
-    setupWallpaperOptions();
+    await setupWallpaperOptions();
     resetForm(false);
 
     if (editCode) {

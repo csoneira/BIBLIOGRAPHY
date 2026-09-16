@@ -43,6 +43,10 @@
       .wallpaper-preview.default { background:radial-gradient(circle at top,#fff6e8,var(--bg) 60%); }
       .wallpaper-preview.marina { background-image:url("wallpapers/marina.jpg"); }
       .wallpaper-preview.rpcs { background-image:url("wallpapers/rpcs.jpeg"); }
+      #customWallpaperOptions { display:contents; }
+      .transparency-row { display:flex; align-items:center; gap:12px; margin-top:18px; }
+      .transparency-row input { flex:1; }
+      .transparency-row output { min-width:48px; color:var(--accent); font-weight:600; }
       [hidden] { display:none !important; }
       @media (max-width:720px) { header, main { width:88vw; } .inline { flex-direction:column; } }
     </style>
@@ -81,6 +85,17 @@
             <span class="wallpaper-preview rpcs"></span>
             <input type="radio" name="wallpaper" value="rpcs" /> RPCs
           </label>
+          <div id="customWallpaperOptions"></div>
+        </div>
+        <div class="transparency-row">
+          <label for="wallpaperTransparency">Wallpaper transparency</label>
+          <input id="wallpaperTransparency" type="range" min="0" max="95" step="1" />
+          <output id="wallpaperTransparencyValue" for="wallpaperTransparency">76%</output>
+        </div>
+        <div class="actions">
+          <input id="customWallpaperUpload" type="file" accept="image/jpeg,image/png,image/webp,.jpg,.jpeg,.png,.webp" />
+          <button class="primary" id="uploadWallpaperBtn" type="button">Add my picture</button>
+          <span class="status" id="wallpaperUploadStatus"></span>
         </div>
         <p>The selected wallpaper stays fixed while both pages scroll. This preference is stored in this browser.</p>
       </details>

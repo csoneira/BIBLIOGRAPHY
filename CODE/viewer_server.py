@@ -23,6 +23,7 @@ SAVED_LISTS_DIR = ROOT / "SAVED_LISTS"
 ABSTRACTS_FILE = ROOT / "METADATA" / "abstracts.csv"
 METADATA_FILE = ROOT / "METADATA" / "metadata.csv"
 CHANGE_BACKUP_DIR = ROOT / "METADATA" / "backups" / "viewer_changes"
+CUSTOM_WALLPAPER_DIR = ROOT / "VIEWER" / "wallpapers" / "custom"
 _ABSTRACT_CACHE = {"mtime_ns": None, "data": {}}
 _WRITE_LOCK = threading.Lock()
 METADATA_FIELDS = [
@@ -592,6 +593,37 @@ def safe_saved_filter_name(name: str) -> str:
     return safe_name
 
 
+def detect_image_extension(header: bytes) -> str:
+    if header.startswith(b"\xff\xd8\xff"):
+        return ".jpg"
+    if header.startswith(b"\x89PNG\r\n\x1a\n"):
+        return ".png"
+    if header.startswith(b"RIFF") and header[8:12] == b"WEBP":
+        return ".webp"
+    raise ValueError("Wallpaper must be a JPEG, PNG, or WebP image")
+
+
+def safe_wallpaper_stem(filename: str) -> str:
+    stem = Path(str(filename or "wallpaper")).stem
+    return slugify(stem, max_len=80)
+
+
+def list_custom_wallpapers() -> list:
+    CUSTOM_WALLPAPER_DIR.mkdir(parents=True, exist_ok=True)
+    items = []
+    for path in sorted(CUSTOM_WALLPAPER_DIR.iterdir()):
+        if not path.is_file() or path.suffix.lower() not in {".jpg", ".jpeg", ".png", ".webp"}:
+            continue
+        items.append(
+            {
+                "id": f"custom/{path.name}",
+                "name": path.stem.replace("_", " ").strip().title(),
+                "url": f"wallpapers/custom/{quote(path.name)}",
+            }
+        )
+    return items
+
+
 def manage_saved_filter(action: str, filename: str, new_name: str = "") -> dict:
     filename = str(filename or "").strip()
     if not filename or Path(filename).name != filename or not filename.endswith(".json"):
@@ -670,9 +702,11 @@ class Handler(SimpleHTTPRequestHandler):
                 "/abstract",
                 "/pdf-status",
                 "/pdf-audit",
+                "/wallpapers",
                 "/save-list",
                 "/save-filter",
                 "/manage-saved-filter",
+                "/upload-wallpaper",
                 "/save-notes",
                 "/create-entry",
                 "/update-entry",
@@ -721,6 +755,9 @@ class Handler(SimpleHTTPRequestHandler):
         if parsed.path == "/pdf-audit":
             self._handle_pdf_audit()
             return
+        if parsed.path == "/wallpapers":
+            self._send_json({"custom": list_custom_wallpapers()})
+            return
         super().do_GET()
 
     def do_POST(self):
@@ -751,6 +788,9 @@ class Handler(SimpleHTTPRequestHandler):
                 return
             if path == "/manage-saved-filter":
                 self._handle_manage_saved_filter()
+                return
+            if path == "/upload-wallpaper":
+                self._handle_upload_wallpaper(parsed.query)
                 return
             if path == "/merge-entries":
                 self._handle_merge_entries()
@@ -1071,6 +1111,42 @@ class Handler(SimpleHTTPRequestHandler):
             self.send_error(404, str(exc))
             return
         self._send_json(result)
+
+    def _handle_upload_wallpaper(self, query: str):
+        content_length = int(self.headers.get("Content-Length", "0"))
+        if content_length <= 0 or content_length > 25 * 1024 * 1024:
+            self.send_error(413, "Wallpaper must be between 1 byte and 25 MB")
+            return
+        filename = (parse_qs(query).get("name", ["wallpaper"])[0] or "wallpaper").strip()
+        raw = self.rfile.read(content_length)
+        if len(raw) != content_length:
+            self.send_error(400, "Wallpaper upload was incomplete")
+            return
+        try:
+            extension = detect_image_extension(raw[:16])
+            stem = safe_wallpaper_stem(filename)
+        except ValueError as exc:
+            self.send_error(400, str(exc))
+            return
+        with _WRITE_LOCK:
+            CUSTOM_WALLPAPER_DIR.mkdir(parents=True, exist_ok=True)
+            target = CUSTOM_WALLPAPER_DIR / f"{stem}{extension}"
+            suffix = 2
+            while target.exists():
+                target = CUSTOM_WALLPAPER_DIR / f"{stem}_{suffix}{extension}"
+                suffix += 1
+            with tempfile.NamedTemporaryFile(
+                "wb", dir=CUSTOM_WALLPAPER_DIR, prefix=".wallpaper-", suffix=".tmp", delete=False
+            ) as handle:
+                temp_path = Path(handle.name)
+                handle.write(raw)
+            os.replace(temp_path, target)
+        item = {
+            "id": f"custom/{target.name}",
+            "name": target.stem.replace("_", " ").strip().title(),
+            "url": f"wallpapers/custom/{quote(target.name)}",
+        }
+        self._send_json(item)
 
     def _handle_merge_entries(self):
         try:
