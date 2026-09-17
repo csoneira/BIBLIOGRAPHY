@@ -34,6 +34,13 @@
       .draft-nav { display:flex; align-items:center; justify-content:center; gap:12px; margin:8px 0 0; flex-wrap:wrap; }
       .draft-nav strong { min-width:90px; text-align:center; color:var(--accent); }
       .field-section-heading { grid-column:1/-1; margin-top:6px; padding-top:14px; border-top:1px solid rgba(30,79,122,.22); color:var(--accent); font-size:15px; font-weight:600; }
+      .personal-fields { grid-column:1/-1; display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:12px; align-items:start; }
+      .keyword-options { display:flex; align-content:flex-start; gap:8px 14px; flex-wrap:wrap; min-height:118px; padding:10px 12px; border:1px solid #d6d6d6; border-radius:10px; background:#fff; }
+      .keyword-options label { display:flex; align-items:center; gap:5px; margin:0; color:var(--ink); }
+      .keyword-options input { width:auto; }
+      #entryNewKeywordContainer { margin-top:8px; }
+      .inline { display:flex; gap:8px; }
+      .inline input { flex:1; }
       .actions { display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin-top:16px; }
       .checks { display:flex; gap:18px; }
       .checks label { display:flex; align-items:center; gap:6px; margin:0; }
@@ -44,7 +51,7 @@
       .danger { background:#f9e4e1; color:#8a2417; border:1px solid #e8b8b1; }
       .status { color:var(--muted); font-size:13px; }
       [hidden] { display:none !important; }
-      @media (max-width:720px) { header, main { width:88vw; } }
+      @media (max-width:720px) { header, main { width:88vw; } .personal-fields { grid-template-columns:1fr; } .inline { flex-direction:column; } }
     </style>
   </head>
   <body>

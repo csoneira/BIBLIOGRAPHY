@@ -67,7 +67,7 @@ async function attachPdf(code, file) {
   return response.json();
 }
 
-const DRAFT_FIELDS = ["title", "author", "journal", "doi", "keywords", "my_keywords", "abstract", "notes"];
+const DRAFT_FIELDS = ["title", "author", "journal", "doi", "keywords", "abstract", "notes"];
 let entryDrafts = [];
 let activeDraftIndex = 0;
 
@@ -84,8 +84,39 @@ function normalizeIdentifier(value) {
     .replace(/^https?:\/\/(?:dx\.)?doi\.org\//, "").replace(/^doi:\s*/, "");
 }
 
+function selectedMyKeywords() {
+  return [...document.querySelectorAll("#entryMyKeywords input:checked")]
+    .map((input) => input.value).join(", ");
+}
+
+function setSelectedMyKeywords(value) {
+  const wanted = String(value || "").split(/[;,]/).map((item) => item.trim()).filter(Boolean);
+  wanted.forEach((keyword) => {
+    addMyKeywordChoice(keyword);
+  });
+  const selected = new Set(wanted.map((keyword) => keyword.toLocaleLowerCase()));
+  document.querySelectorAll("#entryMyKeywords input").forEach((input) => {
+    input.checked = selected.has(input.value.toLocaleLowerCase());
+  });
+}
+
+function addMyKeywordChoice(keyword) {
+  const container = document.getElementById("entryMyKeywords");
+  const existing = [...container.querySelectorAll("input")]
+    .find((input) => input.value.toLocaleLowerCase() === keyword.toLocaleLowerCase());
+  if (existing) return existing;
+  const label = document.createElement("label");
+  const input = document.createElement("input");
+  input.type = "checkbox";
+  input.value = keyword;
+  label.append(input, document.createTextNode(keyword));
+  container.appendChild(label);
+  return input;
+}
+
 function draftIsEmpty(draft) {
-  return !draft.pdfFile && !DRAFT_FIELDS.some((field) => (draft[field] || "").trim());
+  return !draft.pdfFile && !(draft.my_keywords || "").trim()
+    && !DRAFT_FIELDS.some((field) => (draft[field] || "").trim());
 }
 
 function captureDraft() {
@@ -94,6 +125,7 @@ function captureDraft() {
   DRAFT_FIELDS.forEach((field) => {
     draft[field] = document.getElementById(`entry${field.split("_").map((part) => part[0].toUpperCase() + part.slice(1)).join("")}`).value;
   });
+  draft.my_keywords = selectedMyKeywords();
   const selectedType = document.getElementById("entryType").value;
   draft.type = selectedType === "__new__" ? document.getElementById("entryNewType").value : selectedType;
   draft.publication_date = document.getElementById("entryPublicationDate").value.trim();
@@ -106,6 +138,7 @@ function renderDraft() {
   DRAFT_FIELDS.forEach((field) => {
     document.getElementById(`entry${field.split("_").map((part) => part[0].toUpperCase() + part.slice(1)).join("")}`).value = draft[field] || "";
   });
+  setSelectedMyKeywords(draft.my_keywords);
   setPublicationDate(draft.publication_date || "");
   const type = document.getElementById("entryType");
   if ([...type.options].some((option) => option.value === draft.type)) {
@@ -205,11 +238,14 @@ function catalogMyKeywords(rows, config) {
 
 function setupMyKeywords(rows, config) {
   const keywords = catalogMyKeywords(rows, config);
+  const entrySelect = document.getElementById("entryMyKeywords");
   const source = document.getElementById("manageKeywordSource");
   const known = document.getElementById("knownMyKeywords");
+  entrySelect.innerHTML = "";
   source.innerHTML = "";
   known.innerHTML = "";
   keywords.forEach((keyword) => {
+    addMyKeywordChoice(keyword);
     source.add(new Option(keyword, keyword));
     const suggestion = document.createElement("option");
     suggestion.value = keyword;
@@ -294,7 +330,7 @@ function editEntry(row) {
   document.getElementById("entryJournal").value = row.journal || "";
   document.getElementById("entryDoi").value = row.doi || "";
   document.getElementById("entryKeywords").value = row.keywords || "";
-  document.getElementById("entryMyKeywords").value = row.my_keywords || "";
+  setSelectedMyKeywords(row.my_keywords || "");
   document.getElementById("entryAbstract").value = row.abstract || "";
   document.getElementById("entryNotes").value = row.notes || "";
   document.getElementById("entryUnread").checked = row.unread === "1";
@@ -472,6 +508,30 @@ async function init() {
     }
 
     document.getElementById("cancelEditBtn").addEventListener("click", () => resetForm(true));
+    document.getElementById("showNewKeywordBtn").addEventListener("click", () => {
+      const container = document.getElementById("entryNewKeywordContainer");
+      container.hidden = !container.hidden;
+      if (!container.hidden) document.getElementById("entryNewKeyword").focus();
+    });
+    const addNewMyKeyword = () => {
+      const input = document.getElementById("entryNewKeyword");
+      const keyword = input.value.trim();
+      if (!keyword || keyword.length > 80 || /[;,\r\n]/.test(keyword)) {
+        alert("Enter a keyword of 80 characters or fewer without commas or semicolons.");
+        return;
+      }
+      const choice = addMyKeywordChoice(keyword);
+      choice.checked = true;
+      input.value = "";
+      document.getElementById("entryNewKeywordContainer").hidden = true;
+      captureDraft();
+    };
+    document.getElementById("addNewKeywordBtn").addEventListener("click", addNewMyKeyword);
+    document.getElementById("entryNewKeyword").addEventListener("keydown", (event) => {
+      if (event.key !== "Enter") return;
+      event.preventDefault();
+      addNewMyKeyword();
+    });
 
     document.getElementById("undoBtn").addEventListener("click", async () => {
       if (!confirm("Undo the most recent viewer change?")) return;
@@ -644,7 +704,7 @@ async function init() {
         journal: document.getElementById("entryJournal").value,
         doi: document.getElementById("entryDoi").value,
         keywords: document.getElementById("entryKeywords").value,
-        my_keywords: document.getElementById("entryMyKeywords").value,
+        my_keywords: selectedMyKeywords(),
         abstract: document.getElementById("entryAbstract").value,
         notes: document.getElementById("entryNotes").value,
         unread: document.getElementById("entryUnread").checked,
