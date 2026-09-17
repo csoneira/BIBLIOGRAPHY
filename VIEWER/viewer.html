@@ -176,7 +176,6 @@
       }
 
       .text-filters,
-      .journal-filter-row,
       .category-filters,
       .final-filters {
         grid-column: 1 / -1;
@@ -184,8 +183,7 @@
         gap: 12px;
       }
 
-      .text-filters,
-      .journal-filter-row {
+      .text-filters {
         grid-template-columns: repeat(4, minmax(0, 1fr));
       }
 
@@ -628,7 +626,6 @@
           grid-template-columns: 1fr;
         }
         .text-filters,
-        .journal-filter-row,
         .category-filters,
         .final-filters {
           grid-template-columns: 1fr;
@@ -701,12 +698,6 @@
           <div>
             <label for="myKeyword">My keywords contain</label>
             <input id="myKeyword" type="text" placeholder="project-x" />
-          </div>
-        </div>
-        <div class="journal-filter-row">
-          <div>
-            <label for="journal">Journal contains</label>
-            <input id="journal" type="text" placeholder="Nature, NIM A" />
           </div>
         </div>
         <div class="category-filters">

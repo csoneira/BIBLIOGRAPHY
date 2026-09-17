@@ -143,9 +143,6 @@ function applyFilters(rows, filters) {
     if (filters.location && row.pdf_status !== filters.location) {
       return false;
     }
-    if (filters.journal && !matchesTextQuery(row.journal, filters.journal)) {
-      return false;
-    }
     if (filters.keyword && !matchesTextQuery(row.keywords, filters.keyword)) {
       return false;
     }
@@ -596,7 +593,6 @@ function getFilters() {
     starOnly: document.getElementById("starOnly").checked,
     unreadOnly: document.getElementById("unreadOnly").checked,
     location: document.getElementById("locationFilter").value,
-    journal: document.getElementById("journal").value.trim().toLowerCase(),
     keyword: document.getElementById("keyword").value.trim().toLowerCase(),
     myKeyword: document.getElementById("myKeyword").value.trim().toLowerCase(),
     abstract: document.getElementById("abstractFilter").value.trim().toLowerCase(),
@@ -952,7 +948,6 @@ function setFilters(filters = {}) {
   document.getElementById("starOnly").checked = Boolean(filters.starOnly);
   document.getElementById("unreadOnly").checked = Boolean(filters.unreadOnly);
   document.getElementById("locationFilter").value = filters.location || "";
-  document.getElementById("journal").value = filters.journal || "";
   document.getElementById("keyword").value = filters.keyword || "";
   document.getElementById("myKeyword").value = filters.myKeyword || "";
   document.getElementById("abstractFilter").value = filters.abstract || "";
