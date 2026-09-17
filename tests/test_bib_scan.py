@@ -14,7 +14,7 @@ def load_bib(module_path: Path):
 
 
 class TestBibScan(unittest.TestCase):
-    def test_scan_renames_and_writes_metadata(self):
+    def test_scan_does_not_create_entries_for_uncatalogued_pdfs(self):
         repo_root = Path(__file__).resolve().parents[1]
         bib_path = repo_root / "CODE" / "bib.py"
 
@@ -42,21 +42,10 @@ class TestBibScan(unittest.TestCase):
             with patch("socket.gethostname", return_value="test-laptop"):
                 bib.scan_pdfs(dry_run=False)
 
-            pdfs = list((tmp_root / "PDFs").glob("*.pdf"))
-            self.assertEqual(len(pdfs), 1)
-            self.assertEqual(pdfs[0].name, "2020_article_2020_mytest.pdf")
-
-            self.assertTrue(bib.METADATA_FILE.exists())
+            self.assertTrue((tmp_root / "PDFs" / "2020_mytest.pdf").exists())
             with bib.METADATA_FILE.open() as handle:
                 rows = list(csv.DictReader(handle))
-            self.assertEqual(len(rows), 1)
-            row = rows[0]
-            self.assertEqual(row["code"], pdfs[0].stem)
-            self.assertEqual(row["year"], "2020")
-            self.assertEqual(row["type"], "article")
-            self.assertEqual(row["unread"], "")
-            self.assertEqual(row["pdf_hosts"], "test-laptop")
-            self.assertRegex(row["added_at"], r"^\d{4}-\d{2}-\d{2}$")
+            self.assertEqual(rows, [])
 
     def test_scan_preserves_metadata_for_pdfs_not_stored_locally(self):
         repo_root = Path(__file__).resolve().parents[1]
@@ -93,9 +82,8 @@ class TestBibScan(unittest.TestCase):
 
             codes = {row["code"] for row in rows}
             self.assertIn("2019_article_remote_only", codes)
-            self.assertEqual(len(rows), 2)
-            local_row = next(row for row in rows if row["code"] != "2019_article_remote_only")
-            self.assertEqual(local_row["pdf_hosts"], "manzanita")
+            self.assertEqual(len(rows), 1)
+            self.assertTrue((tmp_root / "PDFs" / "2025_new_local.pdf").exists())
 
     def test_scan_matches_existing_entry_by_title_instead_of_duplicating(self):
         repo_root = Path(__file__).resolve().parents[1]

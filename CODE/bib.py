@@ -665,7 +665,6 @@ def scan_pdfs(dry_run: bool = False) -> list:
     existing = load_metadata()
     existing_rows = load_rows()
     updated_rows = {}
-    new_rows = []
     doi_index = {
         (row.get("doi") or "").strip().lower(): code
         for code, row in existing.items()
@@ -700,8 +699,8 @@ def scan_pdfs(dry_run: bool = False) -> list:
                 print(f"Duplicate PDF left unchanged: {path.name} matches {code}")
                 continue
         else:
-            base_code = build_code(year, doc_type, title)
-            code, new_path = ensure_available_code(base_code, path)
+            print(f"Uncatalogued PDF ignored (add it through the viewer): {path.name}")
+            continue
 
         if not dry_run and (path.resolve() != new_path.resolve()):
             path.rename(new_path)
@@ -733,23 +732,15 @@ def scan_pdfs(dry_run: bool = False) -> list:
             "last_viewed": prev.get("last_viewed", ""),
             "notes": prev.get("notes", ""),
         }
-        if matched_code:
-            updated_rows[matched_code] = row
-        else:
-            new_rows.append(row)
-            if doi:
-                doi_index[doi.lower()] = code
-            if title:
-                title_index[normalize_title_text(title).lower()] = code
+        updated_rows[matched_code] = row
 
     # A computer may hold only part of the PDF library. Preserve metadata for
-    # catalog entries whose PDFs are not available locally, update rows for
-    # PDFs that were scanned, and append genuinely new local PDFs.
+    # absent PDFs and reconcile only files that already match a reviewed entry.
+    # New entries must be staged and confirmed through the viewer.
     rows = [
         updated_rows.get((row.get("code") or "").strip(), row)
         for row in existing_rows
     ]
-    rows.extend(new_rows)
     save_metadata(rows)
     return rows
 
@@ -1476,7 +1467,7 @@ def main():
     parser = argparse.ArgumentParser(description="Bibliography helper")
     sub = parser.add_subparsers(dest="command", required=True)
 
-    scan = sub.add_parser("scan", help="Scan PDFs, rename, and update metadata")
+    scan = sub.add_parser("scan", help="Reconcile PDFs with existing metadata")
     scan.add_argument("--dry-run", action="store_true", help="Preview without renaming")
 
     pdf_host = sub.add_parser("mark-pdf-host", help="Record which computer stores PDFs")

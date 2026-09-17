@@ -67,6 +67,118 @@ async function attachPdf(code, file) {
   return response.json();
 }
 
+const DRAFT_FIELDS = ["title", "author", "journal", "doi", "keywords", "my_keywords", "abstract", "notes"];
+let entryDrafts = [];
+let activeDraftIndex = 0;
+
+function blankDraft() {
+  return {
+    title: "", publication_date: "", type: "article", author: "", journal: "", doi: "",
+    keywords: "", my_keywords: "", abstract: "", notes: "", unread: true, star: false,
+    pdfFile: null, sources: ["Manual draft"],
+  };
+}
+
+function normalizeIdentifier(value) {
+  return (value || "").trim().toLowerCase()
+    .replace(/^https?:\/\/(?:dx\.)?doi\.org\//, "").replace(/^doi:\s*/, "");
+}
+
+function draftIsEmpty(draft) {
+  return !draft.pdfFile && !DRAFT_FIELDS.some((field) => (draft[field] || "").trim());
+}
+
+function captureDraft() {
+  if (!entryDrafts.length || document.getElementById("entryForm").dataset.mode === "edit") return;
+  const draft = entryDrafts[activeDraftIndex];
+  const month = document.getElementById("entryPublicationMonth").value;
+  const day = document.getElementById("entryPublicationDay").value;
+  DRAFT_FIELDS.forEach((field) => {
+    draft[field] = document.getElementById(`entry${field.split("_").map((part) => part[0].toUpperCase() + part.slice(1)).join("")}`).value;
+  });
+  const selectedType = document.getElementById("entryType").value;
+  draft.type = selectedType === "__new__" ? document.getElementById("entryNewType").value : selectedType;
+  draft.publication_date = month && day ? `${month}-${day.padStart(2, "0")}` : month;
+  draft.unread = document.getElementById("entryUnread").checked;
+  draft.star = document.getElementById("entryStar").checked;
+}
+
+function renderDraft() {
+  const draft = entryDrafts[activeDraftIndex] || blankDraft();
+  DRAFT_FIELDS.forEach((field) => {
+    document.getElementById(`entry${field.split("_").map((part) => part[0].toUpperCase() + part.slice(1)).join("")}`).value = draft[field] || "";
+  });
+  setPublicationDate(draft.publication_date || "");
+  const type = document.getElementById("entryType");
+  if ([...type.options].some((option) => option.value === draft.type)) {
+    type.value = draft.type;
+  } else {
+    type.value = "__new__";
+    document.getElementById("entryNewType").value = draft.type || "article";
+  }
+  updateNewTypeVisibility();
+  document.getElementById("entryUnread").checked = draft.unread !== false;
+  document.getElementById("entryStar").checked = Boolean(draft.star);
+  document.getElementById("entryPdf").value = "";
+  document.getElementById("draftCounter").textContent = `${activeDraftIndex + 1} / ${entryDrafts.length}`;
+  document.getElementById("draftSource").textContent = `${draft.sources.join(" + ")}${draft.pdfFile ? ` · PDF: ${draft.pdfFile.name}` : ""}`;
+  document.getElementById("previousDraftBtn").disabled = activeDraftIndex === 0;
+  document.getElementById("nextDraftBtn").disabled = activeDraftIndex >= entryDrafts.length - 1;
+}
+
+function startDraftQueue() {
+  entryDrafts = [blankDraft()];
+  activeDraftIndex = 0;
+  document.getElementById("entryImportWorkspace").hidden = false;
+  renderDraft();
+}
+
+function mergeDraft(draft, values, overwrite = false) {
+  ["title", "publication_date", "type", "author", "journal", "doi", "keywords", "abstract"].forEach((field) => {
+    const value = String(values[field] || "").trim();
+    if (value && (overwrite || !String(draft[field] || "").trim())) draft[field] = value;
+  });
+  if (values.source && !draft.sources.includes(values.source)) draft.sources.push(values.source);
+  return draft;
+}
+
+function findDraft(values) {
+  const doi = normalizeIdentifier(values.doi);
+  if (doi) {
+    const match = entryDrafts.find((draft) => normalizeIdentifier(draft.doi) === doi);
+    if (match) return match;
+  }
+  const title = (values.title || "").trim().toLocaleLowerCase();
+  return title ? entryDrafts.find((draft) => (draft.title || "").trim().toLocaleLowerCase() === title) : null;
+}
+
+function addDraft(values) {
+  let draft = findDraft(values);
+  if (!draft && entryDrafts.length === 1 && draftIsEmpty(entryDrafts[0])) draft = entryDrafts[0];
+  if (!draft) {
+    draft = blankDraft();
+    entryDrafts.push(draft);
+  }
+  if (draftIsEmpty(draft)) draft.sources = [];
+  return mergeDraft(draft, values, false);
+}
+
+async function lookupIntoDraft(identifier, preferredDraft = null) {
+  const item = await postJson("/lookup-reference", { identifier });
+  let draft = findDraft({ doi: item.doi || identifier, title: item.title });
+  if (!draft) draft = preferredDraft || addDraft({ doi: item.doi || identifier, source: item.source });
+  mergeDraft(draft, item, true);
+  return draft;
+}
+
+async function inspectPdf(file) {
+  const response = await fetch(`/inspect-pdf?name=${encodeURIComponent(file.name)}`, {
+    method: "POST", headers: { "Content-Type": "application/pdf" }, body: file, cache: "no-store",
+  });
+  if (!response.ok) throw new Error(`Could not inspect ${file.name} (${response.status}).`);
+  return response.json();
+}
+
 function catalogTypes(rows) {
   return [...new Set(rows.map((row) => (row.type || "").trim()).filter(Boolean))]
     .sort((a, b) => a.localeCompare(b));
@@ -161,18 +273,21 @@ function resetForm(clearUrl = true) {
   document.getElementById("createEntryBtn").textContent = "Add entry";
   document.getElementById("cancelEditBtn").hidden = true;
   document.getElementById("entryPdfHostsContainer").hidden = true;
+  document.getElementById("editPdfContainer").hidden = true;
   document.getElementById("entryStatus").textContent = "";
   document.getElementById("entryUnread").checked = true;
   const types = document.getElementById("entryType");
   if ([...types.options].some((option) => option.value === "article")) types.value = "article";
   setPublicationDate("");
   updateNewTypeVisibility();
+  startDraftQueue();
   if (clearUrl) history.replaceState({}, "", "manage.html");
 }
 
 function editEntry(row) {
   const form = document.getElementById("entryForm");
   document.getElementById("entryPanel").open = true;
+  document.getElementById("entryImportWorkspace").hidden = true;
   form.dataset.mode = "edit";
   form.dataset.legacyYear = row.publication_date ? "" : (row.year || "");
   document.getElementById("entryCode").value = row.code;
@@ -191,6 +306,7 @@ function editEntry(row) {
   document.getElementById("entryStar").checked = row.star === "1";
   document.getElementById("entryPdfHosts").value = row.pdf_hosts || "";
   document.getElementById("entryPdfHostsContainer").hidden = false;
+  document.getElementById("editPdfContainer").hidden = false;
   document.getElementById("cancelEditBtn").hidden = false;
   document.getElementById("entryFormTitle").textContent = `Edit: ${row.title || row.code}`;
   document.getElementById("createEntryBtn").textContent = "Save changes";
@@ -429,34 +545,93 @@ async function init() {
       }
     });
 
-    const lookupEntry = async () => {
-      const identifier = document.getElementById("entryLookup").value.trim();
+    document.getElementById("previousDraftBtn").addEventListener("click", () => {
+      captureDraft();
+      if (activeDraftIndex > 0) activeDraftIndex -= 1;
+      renderDraft();
+    });
+    document.getElementById("nextDraftBtn").addEventListener("click", () => {
+      captureDraft();
+      if (activeDraftIndex < entryDrafts.length - 1) activeDraftIndex += 1;
+      renderDraft();
+    });
+    document.getElementById("discardDraftBtn").addEventListener("click", () => {
+      captureDraft();
+      const draft = entryDrafts[activeDraftIndex];
+      if (!draftIsEmpty(draft) && !confirm("Discard this unsaved draft?")) return;
+      entryDrafts.splice(activeDraftIndex, 1);
+      if (!entryDrafts.length) entryDrafts.push(blankDraft());
+      activeDraftIndex = Math.min(activeDraftIndex, entryDrafts.length - 1);
+      renderDraft();
+      document.getElementById("entryStatus").textContent = "Draft discarded; no catalog changes were made";
+    });
+
+    document.getElementById("importCitationsBtn").addEventListener("click", async () => {
+      const text = document.getElementById("citationImport").value.trim();
       const status = document.getElementById("entryStatus");
-      if (!identifier) { alert("Enter a DOI or arXiv identifier first."); return; }
-      status.textContent = "Looking up metadata…";
+      if (!text) { alert("Paste one or more RIS or BibTeX records first."); return; }
+      captureDraft();
+      status.textContent = "Parsing citation records…";
       try {
-        const item = await postJson("/lookup-reference", { identifier });
-        document.getElementById("entryTitle").value = item.title || "";
-        document.getElementById("entryAuthor").value = item.author || "";
-        document.getElementById("entryJournal").value = item.journal || "";
-        document.getElementById("entryDoi").value = item.doi || "";
-        document.getElementById("entryAbstract").value = item.abstract || "";
-        setPublicationDate(item.publication_date || "");
-        const type = document.getElementById("entryType");
-        if ([...type.options].some((option) => option.value === item.type)) type.value = item.type;
-        else {
-          type.value = "__new__";
-          document.getElementById("entryNewType").value = item.type || "article";
+        const result = await postJson("/parse-citations", { text });
+        const imported = result.entries.map((entry) => addDraft(entry));
+        let enriched = 0;
+        for (const draft of imported) {
+          if (!draft.doi) continue;
+          try { await lookupIntoDraft(draft.doi, draft); enriched += 1; } catch (error) { /* Keep citation metadata. */ }
         }
-        updateNewTypeVisibility();
-        status.textContent = `Filled from ${item.source}`;
-      } catch (error) { status.textContent = "Lookup failed"; alert(error.message); }
-    };
-    document.getElementById("lookupBtn").addEventListener("click", lookupEntry);
-    document.getElementById("entryLookup").addEventListener("keydown", (event) => {
-      if (event.key !== "Enter") return;
-      event.preventDefault();
-      lookupEntry();
+        activeDraftIndex = Math.max(0, entryDrafts.indexOf(imported[0]));
+        document.getElementById("citationImport").value = "";
+        renderDraft();
+        status.textContent = `Added ${imported.length} citation record(s); enriched ${enriched} from DOI`;
+      } catch (error) { status.textContent = "Citation import failed"; alert(error.message); }
+    });
+
+    document.getElementById("importDoisBtn").addEventListener("click", async () => {
+      const identifiers = document.getElementById("doiImport").value
+        .split(/[\n,;]+/).map((value) => value.trim()).filter(Boolean);
+      if (!identifiers.length) { alert("Enter one or more DOI or arXiv identifiers first."); return; }
+      captureDraft();
+      const status = document.getElementById("entryStatus");
+      status.textContent = `Retrieving 0 / ${identifiers.length}…`;
+      let completed = 0;
+      const failures = [];
+      for (const identifier of identifiers) {
+        try { await lookupIntoDraft(identifier); } catch (error) { failures.push(identifier); }
+        completed += 1;
+        status.textContent = `Retrieving ${completed} / ${identifiers.length}…`;
+      }
+      document.getElementById("doiImport").value = "";
+      renderDraft();
+      status.textContent = `Processed ${completed - failures.length} identifier(s)${failures.length ? `; ${failures.length} failed` : ""}`;
+      if (failures.length) alert(`These identifiers could not be retrieved:\n${failures.join("\n")}`);
+    });
+
+    document.getElementById("inspectPdfsBtn").addEventListener("click", async () => {
+      const files = [...document.getElementById("entryPdf").files];
+      if (!files.length) { alert("Choose one or more PDF files first."); return; }
+      captureDraft();
+      const status = document.getElementById("entryStatus");
+      for (let index = 0; index < files.length; index += 1) {
+        const file = files[index];
+        status.textContent = `Inspecting PDF ${index + 1} / ${files.length}…`;
+        try {
+          const values = await inspectPdf(file);
+          let draft = findDraft(values);
+          if (!draft && files.length === 1 && !entryDrafts[activeDraftIndex].pdfFile) draft = entryDrafts[activeDraftIndex];
+          if (!draft) draft = addDraft(values);
+          if (draftIsEmpty(draft)) draft.sources = [];
+          mergeDraft(draft, values, false);
+          draft.pdfFile = file;
+          if (!draft.sources.includes("PDF scan")) draft.sources.push("PDF scan");
+          if (values.doi) {
+            try { await lookupIntoDraft(values.doi, draft); } catch (error) { /* Keep cautious PDF values. */ }
+          }
+          activeDraftIndex = entryDrafts.indexOf(draft);
+        } catch (error) { alert(error.message); }
+      }
+      renderDraft();
+      status.textContent = `Added ${files.length} PDF file(s) to the review queue`;
     });
 
     document.getElementById("entryForm").addEventListener("submit", async (event) => {
@@ -467,7 +642,10 @@ async function init() {
       const month = document.getElementById("entryPublicationMonth").value;
       const day = document.getElementById("entryPublicationDay").value;
       const selectedType = document.getElementById("entryType").value;
-      const pdfFile = document.getElementById("entryPdf").files[0];
+      captureDraft();
+      const pdfFile = form.dataset.mode === "edit"
+        ? document.getElementById("editPdf").files[0]
+        : entryDrafts[activeDraftIndex]?.pdfFile;
       const payload = {
         code: document.getElementById("entryCode").value,
         title: document.getElementById("entryTitle").value,
@@ -508,7 +686,15 @@ async function init() {
           await attachPdf(saved.code, pdfFile);
         }
         status.textContent = `${editing ? "Updated" : "Created"} ${saved.code}${pdfFile ? " with a local PDF" : ""}`;
-        window.setTimeout(() => { location.href = `manage.html?edit=${encodeURIComponent(saved.code)}`; }, 500);
+        if (editing) {
+          window.setTimeout(() => { location.href = `manage.html?edit=${encodeURIComponent(saved.code)}`; }, 500);
+        } else {
+          entryDrafts.splice(activeDraftIndex, 1);
+          if (!entryDrafts.length) entryDrafts.push(blankDraft());
+          activeDraftIndex = Math.min(activeDraftIndex, entryDrafts.length - 1);
+          renderDraft();
+          button.disabled = false;
+        }
       } catch (error) {
         if (saved && pdfFile) {
           status.textContent = `Saved ${saved.code}, but the PDF was not attached`;
@@ -518,6 +704,8 @@ async function init() {
           document.getElementById("createEntryBtn").textContent = "Save changes";
           document.getElementById("cancelEditBtn").hidden = false;
           document.getElementById("entryPdfHostsContainer").hidden = false;
+          document.getElementById("editPdfContainer").hidden = false;
+          document.getElementById("entryImportWorkspace").hidden = true;
           history.replaceState({}, "", `manage.html?edit=${encodeURIComponent(saved.code)}`);
           alert(`The bibliography entry was saved, but the PDF was not attached. You can correct the file selection and try again.\n\n${error.message}`);
         } else {

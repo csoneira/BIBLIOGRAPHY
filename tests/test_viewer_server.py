@@ -268,6 +268,40 @@ class TestCreateMetadataEntry(unittest.TestCase):
         self.assertEqual(arxiv["publication_date"], "2024-01-20")
         self.assertEqual(arxiv["type"], "preprint")
 
+    def test_parses_multiple_bibtex_and_ris_records(self):
+        repo_root = Path(__file__).resolve().parents[1]
+        server = load_server(repo_root / "CODE" / "viewer_server.py")
+
+        bibtex = server.parse_citation_records(
+            """@article{one, title={First {RPC} paper}, author={Ada A and Bob B},
+            doi={10.1234/one}, year={2024}, journal={Detector Journal},
+            abstract={Citation-only abstract}}
+            @book{two, title={Second reference}, author={Carol C}, year={2020}}"""
+        )
+        self.assertEqual(len(bibtex), 2)
+        self.assertEqual(bibtex[0]["title"], "First RPC paper")
+        self.assertEqual(bibtex[0]["author"], "Ada A; Bob B")
+        self.assertEqual(bibtex[0]["abstract"], "Citation-only abstract")
+        self.assertEqual(bibtex[1]["type"], "book")
+
+        ris = server.parse_citation_records(
+            """TY  - JOUR
+TI  - A RIS article
+AU  - First Author
+AU  - Second Author
+DO  - https://doi.org/10.5678/ris
+PY  - 2023/05/02
+AB  - Preserved abstract
+ER  -
+TY  - RPRT
+TI  - A report
+ER  -"""
+        )
+        self.assertEqual(len(ris), 2)
+        self.assertEqual(ris[0]["doi"], "10.5678/ris")
+        self.assertEqual(ris[0]["publication_date"], "2023-05-02")
+        self.assertEqual(ris[1]["type"], "report")
+
     def test_merge_entries_combines_metadata_pdf_and_undoes(self):
         repo_root = Path(__file__).resolve().parents[1]
         server = load_server(repo_root / "CODE" / "viewer_server.py")

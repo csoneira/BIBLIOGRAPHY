@@ -28,6 +28,12 @@
       input[type="file"] { padding:8px 10px; }
       textarea { min-height:90px; resize:vertical; }
       .field-help { margin:6px 0 0; color:var(--muted); font-size:12px; }
+      .import-workspace { margin-top:16px; padding:16px; border:1px solid #d9d5d0; border-radius:12px; background:rgba(255,255,255,.6); }
+      .import-step + .import-step { margin-top:14px; }
+      .import-step textarea { min-height:76px; }
+      .draft-nav { display:flex; align-items:center; justify-content:center; gap:12px; margin:18px 0 4px; }
+      .draft-nav strong { min-width:90px; text-align:center; color:var(--accent); }
+      .draft-source { color:var(--muted); font-size:12px; text-align:center; }
       .inline { display:flex; gap:8px; }
       .inline input { flex:1; }
       .actions { display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin-top:16px; }
@@ -78,15 +84,39 @@
         <summary id="entryFormTitle">Add bibliography entry</summary>
         <form id="entryForm">
           <input id="entryCode" type="hidden" />
-          <div class="grid">
-            <div class="wide">
-              <label for="entryLookup">DOI or arXiv identifier</label>
-              <div class="inline">
-                <input id="entryLookup" type="text" placeholder="10.xxxx/... or arXiv:2401.12345" autocomplete="off" />
-                <button class="secondary" id="lookupBtn" type="button">Fill fields</button>
+          <div class="import-workspace" id="entryImportWorkspace">
+            <div class="import-step">
+              <label for="citationImport">1. RIS or BibTeX records</label>
+              <textarea id="citationImport" placeholder="Paste one or several complete RIS or BibTeX records"></textarea>
+              <div class="actions">
+                <button class="secondary" id="importCitationsBtn" type="button">Add citation records</button>
               </div>
-              <p class="field-help">Enter an identifier and fill the form automatically. Check or edit the publisher's metadata before saving.</p>
             </div>
+            <div class="import-step">
+              <label for="doiImport">2. DOI or arXiv identifiers</label>
+              <textarea id="doiImport" placeholder="One identifier per line"></textarea>
+              <div class="actions">
+                <button class="secondary" id="importDoisBtn" type="button">Add or enrich from identifiers</button>
+              </div>
+              <p class="field-help">Crossref/arXiv values replace citation values when supplied; citation-only values are preserved.</p>
+            </div>
+            <div class="import-step">
+              <label for="entryPdf">3. PDF files (optional)</label>
+              <input id="entryPdf" type="file" accept="application/pdf,.pdf" multiple />
+              <div class="actions">
+                <button class="secondary" id="inspectPdfsBtn" type="button">Add PDFs to drafts</button>
+              </div>
+              <p class="field-help">PDF scanning fills only empty fields. Every draft remains unsaved until you confirm it below.</p>
+            </div>
+            <div class="draft-nav" id="draftNavigation">
+              <button class="secondary" id="previousDraftBtn" type="button">← Previous</button>
+              <strong id="draftCounter">1 / 1</strong>
+              <button class="secondary" id="nextDraftBtn" type="button">Next →</button>
+              <button class="danger" id="discardDraftBtn" type="button">Discard draft</button>
+            </div>
+            <div class="draft-source" id="draftSource">Manual draft</div>
+          </div>
+          <div class="grid">
             <div><label for="entryTitle">Title *</label><input id="entryTitle" required /></div>
             <div><label for="entryPublicationMonth">Publication month</label><input id="entryPublicationMonth" type="month" /></div>
             <div><label for="entryPublicationDay">Day (optional)</label><input id="entryPublicationDay" type="number" min="1" max="31" disabled /></div>
@@ -98,10 +128,9 @@
             <div><label for="entryKeywords">Keywords</label><input id="entryKeywords" /></div>
             <div><label for="entryMyKeywords">My keywords</label><input id="entryMyKeywords" /></div>
             <div id="entryPdfHostsContainer" hidden><label for="entryPdfHosts">PDF computers</label><input id="entryPdfHosts" placeholder="naranjito; manzanita" /></div>
-            <div class="wide">
-              <label for="entryPdf">PDF file (optional)</label>
-              <input id="entryPdf" type="file" accept="application/pdf,.pdf" />
-              <p class="field-help">The file will be copied into PDFs, checked, and marked Local on this computer.</p>
+            <div class="wide" id="editPdfContainer" hidden>
+              <label for="editPdf">Attach a PDF (optional)</label>
+              <input id="editPdf" type="file" accept="application/pdf,.pdf" />
             </div>
             <div class="wide"><label for="entryAbstract">Abstract</label><textarea id="entryAbstract"></textarea></div>
             <div class="wide"><label for="entryNotes">Notes</label><textarea id="entryNotes"></textarea></div>

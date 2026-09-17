@@ -600,6 +600,206 @@ def lookup_reference(identifier: str) -> dict:
         return parse_crossref_message(json.loads(response.read().decode("utf-8"))["message"])
 
 
+def _clean_citation_value(value: str) -> str:
+    value = str(value or "").strip()
+    while len(value) >= 2 and ((value[0], value[-1]) in {("{", "}"), ('"', '"')}):
+        value = value[1:-1].strip()
+    value = value.replace("{", "").replace("}", "")
+    return re.sub(r"\s+", " ", value).strip()
+
+
+def parse_bibtex_records(text: str) -> list[dict]:
+    records = []
+    position = 0
+    while True:
+        match = re.search(r"@([A-Za-z]+)\s*\{", text[position:])
+        if not match:
+            break
+        entry_type = match.group(1).lower()
+        start = position + match.end()
+        depth, quoted, escaped, end = 1, False, False, start
+        while end < len(text) and depth:
+            char = text[end]
+            if char == '"' and not escaped:
+                quoted = not quoted
+            elif not quoted and char == "{":
+                depth += 1
+            elif not quoted and char == "}":
+                depth -= 1
+            escaped = char == "\\" and not escaped
+            if char != "\\":
+                escaped = False
+            end += 1
+        body = text[start : end - 1]
+        position = end
+        comma = body.find(",")
+        if comma < 0:
+            continue
+        fields, cursor = {}, comma + 1
+        while cursor < len(body):
+            field_match = re.search(r"([A-Za-z][\w-]*)\s*=\s*", body[cursor:])
+            if not field_match:
+                break
+            name = field_match.group(1).lower()
+            cursor += field_match.end()
+            if cursor >= len(body):
+                break
+            if body[cursor] == "{":
+                value_start, nested = cursor + 1, 1
+                cursor += 1
+                while cursor < len(body) and nested:
+                    nested += (body[cursor] == "{") - (body[cursor] == "}")
+                    cursor += 1
+                value = body[value_start : cursor - 1]
+            elif body[cursor] == '"':
+                cursor += 1
+                value_start = cursor
+                while cursor < len(body) and body[cursor] != '"':
+                    cursor += 2 if body[cursor] == "\\" else 1
+                value = body[value_start:cursor]
+                cursor += 1
+            else:
+                value_start = cursor
+                while cursor < len(body) and body[cursor] not in ",\n":
+                    cursor += 1
+                value = body[value_start:cursor]
+            fields[name] = _clean_citation_value(value)
+        type_map = {
+            "article": "article", "book": "book", "inbook": "book",
+            "incollection": "book-chapter", "inproceedings": "proceedings",
+            "conference": "proceedings", "phdthesis": "thesis",
+            "mastersthesis": "thesis", "techreport": "report",
+            "unpublished": "preprint",
+        }
+        date_match = re.search(r"\b((?:19|20)\d{2})[-/.](\d{1,2})(?:[-/.](\d{1,2}))?", fields.get("date", ""))
+        month_names = {name: index for index, name in enumerate(
+            ("jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"), 1
+        )}
+        year_match = re.search(r"\b(19|20)\d{2}\b", fields.get("year", ""))
+        month_value = fields.get("month", "").strip().lower()[:3]
+        month_number = int(fields["month"]) if fields.get("month", "").isdigit() else month_names.get(month_value)
+        publication_date = ""
+        if date_match:
+            publication_date = f"{date_match.group(1)}-{int(date_match.group(2)):02d}"
+            if date_match.group(3):
+                publication_date += f"-{int(date_match.group(3)):02d}"
+        elif year_match and month_number and 1 <= month_number <= 12:
+            publication_date = f"{year_match.group(0)}-{month_number:02d}"
+        records.append({
+            "title": fields.get("title", ""),
+            "author": re.sub(r"\s+and\s+", "; ", fields.get("author", ""), flags=re.I),
+            "journal": fields.get("journal") or fields.get("booktitle") or fields.get("publisher", ""),
+            "publication_date": publication_date,
+            "doi": normalize_doi(fields.get("doi", "")),
+            "type": type_map.get(entry_type, entry_type or "article"),
+            "keywords": fields.get("keywords", ""),
+            "abstract": fields.get("abstract", ""),
+            "source": "BibTeX",
+        })
+    return records
+
+
+def parse_ris_records(text: str) -> list[dict]:
+    records, current = [], {}
+    for raw_line in text.splitlines():
+        match = re.match(r"^([A-Z0-9]{2})\s{0,2}-\s?(.*)$", raw_line.strip())
+        if not match:
+            continue
+        tag, value = match.groups()
+        if tag == "TY" and current:
+            records.append(current)
+            current = {}
+        current.setdefault(tag, []).append(value.strip())
+        if tag == "ER":
+            records.append(current)
+            current = {}
+    if current:
+        records.append(current)
+    type_map = {
+        "JOUR": "article", "JFULL": "article", "BOOK": "book", "CHAP": "book-chapter",
+        "CONF": "proceedings", "CPAPER": "proceedings", "THES": "thesis",
+        "RPRT": "report", "UNPB": "preprint", "ELEC": "web",
+    }
+    parsed = []
+    for fields in records:
+        first = lambda *tags: next((fields[tag][0] for tag in tags if fields.get(tag)), "")
+        date_value = first("DA", "Y1", "PY")
+        date_match = re.search(r"\b((?:19|20)\d{2})(?:[/.-](\d{1,2}))?(?:[/.-](\d{1,2}))?", date_value)
+        publication_date = ""
+        if date_match:
+            publication_date = date_match.group(1)
+            if date_match.group(2):
+                publication_date += f"-{int(date_match.group(2)):02d}"
+                if date_match.group(3):
+                    publication_date += f"-{int(date_match.group(3)):02d}"
+        parsed.append({
+            "title": first("TI", "T1", "CT"),
+            "author": "; ".join(fields.get("AU", []) + fields.get("A1", [])),
+            "journal": first("JO", "JF", "T2", "PB"),
+            "publication_date": publication_date,
+            "doi": normalize_doi(first("DO")),
+            "type": type_map.get(first("TY").upper(), first("TY").lower() or "article"),
+            "keywords": "; ".join(fields.get("KW", [])),
+            "abstract": first("AB", "N2"),
+            "source": "RIS",
+        })
+    return [item for item in parsed if item["title"] or item["doi"]]
+
+
+def parse_citation_records(text: str) -> list[dict]:
+    text = str(text or "").strip()
+    if not text:
+        raise ValueError("Paste one or more RIS or BibTeX records")
+    records = parse_bibtex_records(text) if re.search(r"@\w+\s*\{", text) else parse_ris_records(text)
+    if not records:
+        raise ValueError("No RIS or BibTeX records were recognized")
+    return records
+
+
+def inspect_pdf_file(path: Path, filename: str = "") -> dict:
+    info = {}
+    try:
+        result = subprocess.run(["pdfinfo", str(path)], capture_output=True, text=True, timeout=15)
+        for line in result.stdout.splitlines():
+            if ":" in line:
+                key, value = line.split(":", 1)
+                info[key.strip().lower()] = value.strip()
+    except (FileNotFoundError, subprocess.SubprocessError):
+        pass
+    text = ""
+    try:
+        result = subprocess.run(
+            ["pdftotext", "-f", "1", "-l", "2", str(path), "-"],
+            capture_output=True, text=True, timeout=20,
+        )
+        text = result.stdout
+    except (FileNotFoundError, subprocess.SubprocessError):
+        pass
+    doi_match = re.search(r"\b10\.\d{4,9}/[-._;()/:A-Z0-9]+", text, flags=re.I)
+    title = _clean_citation_value(info.get("title", ""))
+    if not title or title.lower() in {"untitled", Path(filename).stem.lower()}:
+        title = next((
+            re.sub(r"\s+", " ", line).strip()
+            for line in text.splitlines()[:35]
+            if 12 <= len(line.strip()) <= 240 and not re.match(r"^(doi|arxiv|http|www\.)", line.strip(), re.I)
+        ), "")
+    abstract = ""
+    abstract_match = re.search(
+        r"\babstract\b\s*[:.—-]?\s*(.{80,3000}?)(?=\n\s*(?:1\.?\s+)?(?:introduction|keywords?)\b)",
+        text, flags=re.I | re.S,
+    )
+    if abstract_match:
+        abstract = re.sub(r"\s+", " ", abstract_match.group(1)).strip()
+    return {
+        "title": title,
+        "author": _clean_citation_value(info.get("author", "")),
+        "doi": normalize_doi(doi_match.group(0).rstrip(".,;)") if doi_match else ""),
+        "keywords": _clean_citation_value(info.get("keywords", "")),
+        "abstract": abstract,
+        "source": "PDF scan",
+    }
+
+
 def audit_pdfs(update_missing: bool = False) -> dict:
     rows = load_metadata_rows()
     entries, groups = [], {}
@@ -896,6 +1096,8 @@ class Handler(SimpleHTTPRequestHandler):
                 "/manage-my-keyword",
                 "/merge-entries",
                 "/lookup-reference",
+                "/parse-citations",
+                "/inspect-pdf",
                 "/undo-last-change",
                 "/toggle-star",
                 "/toggle-unread",
@@ -982,6 +1184,12 @@ class Handler(SimpleHTTPRequestHandler):
                 return
             if path == "/lookup-reference":
                 self._handle_lookup_reference()
+                return
+            if path == "/parse-citations":
+                self._handle_parse_citations()
+                return
+            if path == "/inspect-pdf":
+                self._handle_inspect_pdf(parsed.query)
                 return
             if path == "/undo-last-change":
                 self._handle_undo_last_change()
@@ -1390,6 +1598,41 @@ class Handler(SimpleHTTPRequestHandler):
             self.send_error(502, "Reference service is temporarily unavailable")
             return
         self._send_json(result)
+
+    def _handle_parse_citations(self):
+        try:
+            payload = self._read_json_payload(max_length=5_000_000)
+            records = parse_citation_records(payload.get("text", ""))
+        except (json.JSONDecodeError, ValueError) as exc:
+            self.send_error(400, str(exc))
+            return
+        self._send_json({"entries": records})
+
+    def _handle_inspect_pdf(self, query: str):
+        content_length = int(self.headers.get("Content-Length", "0"))
+        if content_length <= 0 or content_length > 250 * 1024 * 1024:
+            self.send_error(413, "PDF must be between 1 byte and 250 MB")
+            return
+        filename = (parse_qs(query).get("name", [""])[0] or "").strip()
+        with tempfile.NamedTemporaryFile("wb", suffix=".pdf", delete=False) as handle:
+            temp_path = Path(handle.name)
+            remaining, first, valid_pdf = content_length, True, False
+            while remaining:
+                chunk = self.rfile.read(min(64 * 1024, remaining))
+                if not chunk:
+                    break
+                if first:
+                    valid_pdf = chunk.lstrip().startswith(b"%PDF-")
+                    first = False
+                handle.write(chunk)
+                remaining -= len(chunk)
+        try:
+            if remaining or not valid_pdf:
+                self.send_error(400, "The uploaded file is not a valid PDF")
+                return
+            self._send_json(inspect_pdf_file(temp_path, filename))
+        finally:
+            temp_path.unlink(missing_ok=True)
 
     def _handle_undo_last_change(self):
         try:

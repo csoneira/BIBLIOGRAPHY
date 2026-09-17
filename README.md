@@ -30,15 +30,10 @@ code,abstract
 
 ## Minimal Workflow
 
-1. Add PDFs to `PDFs/`.
-2. Build initial metadata rows:
-
-```bash
-python3 CODE/bib.py scan
-```
-
-3. Curate titles/fields in `METADATA/metadata.csv`.
-4. Sync codes and filenames from curated titles:
+1. Start the viewer server and open **Options → Add bibliography entry**.
+2. Stage one or more RIS/BibTeX records, DOI/arXiv identifiers, and optional PDFs.
+3. Review each draft page and confirm entries one at a time. Nothing is added before confirmation.
+4. If needed, sync codes and filenames from later title corrections:
 
 ```bash
 python3 CODE/bib.py cleanup --rename
@@ -81,13 +76,14 @@ Then open `http://localhost:8000/VIEWER/viewer.html`.
 The metadata catalog is shared through Git, while `PDFs/` is intentionally ignored.
 Each computer can therefore hold a different subset of the documents.
 
-On this laptop:
+On this laptop, add new references through **Options → Add bibliography entry**.
+The review queue accepts batches of RIS/BibTeX records and identifiers, enriches
+them from Crossref/arXiv, and cautiously fills remaining blanks from selected PDFs.
+Each draft must be confirmed explicitly. A confirmed PDF is copied into `PDFs/`,
+checksummed, and recorded under the current computer's hostname.
 
-1. Put new documents in `PDFs/`.
-2. Run `python3 CODE/bib.py scan`. Existing catalog rows are preserved even when
-   their PDFs are absent; new local PDFs are added to the catalog. Scanning also
-   adds the current computer's hostname to `pdf_hosts` for every local PDF.
-3. Curate the new rows, run `scripts/verify.sh`, then commit and push the metadata.
+`python3 CODE/bib.py scan` is now maintenance-only: it reconciles local PDFs with
+entries that already exist and ignores unmatched files instead of creating entries.
 
 To update another computer, pull the Git changes there and copy the local PDFs
 separately. For example, from this repository you can transfer only files the
@@ -126,7 +122,7 @@ python3 CODE/bib.py mark-pdf-host --host COMPUTER-NAME --all
 
 ## Viewer Features (Current)
 
-- Filters on publication-date range, one or more catalog-defined types, title, journal, keywords, my_keywords,
+- Filters on publication-date range, one or more catalog-defined types, title, keywords, my_keywords,
   abstract text, added-at date range, and read-date range.
 - Sorting by `added_at` or publication date (`year`), ascending or descending, plus random discovery order.
 - `star` and `unread` toggles persisted to `METADATA/metadata.csv`.
@@ -142,12 +138,13 @@ python3 CODE/bib.py mark-pdf-host --host COMPUTER-NAME --all
 - Saved Filters can be renamed or deleted from Options, with both operations covered by Undo last change.
 - Type rename/merge management; merging removes the unused old type from selectors.
 - Duplicate-entry merge combines metadata, abstracts, and PDF files while remaining undoable.
-- DOI and arXiv lookup fills the entry form from Crossref or arXiv metadata.
+- A review queue accepts multiple RIS/BibTeX records, DOI/arXiv identifiers, and PDFs;
+  DOI metadata enriches matching drafts before each entry is manually confirmed.
 - Per-entry citation copying and bulk downloads in formatted citation, BibTeX, and RIS formats.
 - SHA-256 PDF auditing detects changed files and byte-identical duplicates.
 - Per-paper notes editor persisted to `METADATA/metadata.csv` (`notes` column).
-- An entry form that can fill editable metadata from a DOI or arXiv identifier and optionally
-  copy an uploaded PDF into `PDFs/`; it also supports metadata-only printed references.
+- An entry form that can fill editable metadata from citations, DOI/arXiv identifiers, or a cautious
+  PDF scan and optionally copy an uploaded PDF into `PDFs/`; it also supports metadata-only references.
   Its publication month is optional, an exact day can be included when known, and
   document types come from the catalog with an option to add a new type.
 - Catalog-management tools (create/edit entries, merge duplicates, and manage types)
