@@ -35,7 +35,7 @@
       .draft-footer { margin-top:20px; padding-top:16px; border-top:1px solid rgba(30,79,122,.22); }
       .draft-nav { display:flex; align-items:center; justify-content:center; gap:12px; margin:8px 0 0; }
       .draft-nav strong { min-width:90px; text-align:center; color:var(--accent); }
-      .draft-source { color:var(--muted); font-size:12px; text-align:center; }
+      .field-section-heading { grid-column:1/-1; margin-top:6px; padding-top:14px; border-top:1px solid rgba(30,79,122,.22); color:var(--accent); font-size:15px; font-weight:600; }
       .inline { display:flex; gap:8px; }
       .inline input { flex:1; }
       .actions { display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin-top:16px; }
@@ -110,26 +110,27 @@
               <div class="actions">
                 <button class="secondary" id="inspectPdfsBtn" type="button">Add PDFs to drafts</button>
               </div>
-              <p class="field-help">PDF scanning fills only empty fields. Every draft remains unsaved until you confirm it below.</p>
+              <p class="field-help" id="draftPdfStatus" hidden></p>
             </div>
           </div>
           <div class="grid">
+            <div class="field-section-heading">Bibliographic metadata</div>
             <div><label for="entryTitle">Title *</label><input id="entryTitle" required /></div>
-            <div><label for="entryPublicationMonth">Publication month</label><input id="entryPublicationMonth" type="month" /></div>
-            <div><label for="entryPublicationDay">Day (optional)</label><input id="entryPublicationDay" type="number" min="1" max="31" disabled /></div>
+            <div><label for="entryPublicationDate">Publication date</label><input id="entryPublicationDate" type="text" inputmode="numeric" pattern="\d{4}-(0[1-9]|1[0-2])(?:-(0[1-9]|[12]\d|3[01]))?" placeholder="YYYY-MM or YYYY-MM-DD" /></div>
             <div><label for="entryType">Type *</label><select id="entryType" required></select></div>
             <div id="entryNewTypeContainer" hidden><label for="entryNewType">New type *</label><input id="entryNewType" /></div>
             <div><label for="entryAuthor">Author(s)</label><input id="entryAuthor" /></div>
             <div><label for="entryJournal">Journal</label><input id="entryJournal" /></div>
             <div><label for="entryDoi">DOI</label><input id="entryDoi" placeholder="10.xxxx/..." /></div>
             <div><label for="entryKeywords">Keywords</label><input id="entryKeywords" /></div>
-            <div><label for="entryMyKeywords">My keywords</label><input id="entryMyKeywords" /></div>
             <div id="entryPdfHostsContainer" hidden><label for="entryPdfHosts">PDF computers</label><input id="entryPdfHosts" placeholder="naranjito; manzanita" /></div>
             <div class="wide" id="editPdfContainer" hidden>
               <label for="editPdf">Attach a PDF (optional)</label>
               <input id="editPdf" type="file" accept="application/pdf,.pdf" />
             </div>
             <div class="wide"><label for="entryAbstract">Abstract</label><textarea id="entryAbstract"></textarea></div>
+            <div class="field-section-heading">My library fields</div>
+            <div><label for="entryMyKeywords">My keywords</label><input id="entryMyKeywords" /></div>
             <div class="wide"><label for="entryNotes">Notes</label><textarea id="entryNotes"></textarea></div>
           </div>
           <div class="actions">
@@ -142,7 +143,6 @@
             <span class="status" id="entryStatus"></span>
           </div>
           <div class="draft-footer" id="draftNavigation">
-            <div class="draft-source" id="draftSource">Manual draft</div>
             <div class="draft-nav">
               <button class="secondary" id="previousDraftBtn" type="button">← Previous</button>
               <strong id="draftCounter">1 / 1</strong>

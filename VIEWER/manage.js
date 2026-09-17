@@ -91,14 +91,12 @@ function draftIsEmpty(draft) {
 function captureDraft() {
   if (!entryDrafts.length || document.getElementById("entryForm").dataset.mode === "edit") return;
   const draft = entryDrafts[activeDraftIndex];
-  const month = document.getElementById("entryPublicationMonth").value;
-  const day = document.getElementById("entryPublicationDay").value;
   DRAFT_FIELDS.forEach((field) => {
     draft[field] = document.getElementById(`entry${field.split("_").map((part) => part[0].toUpperCase() + part.slice(1)).join("")}`).value;
   });
   const selectedType = document.getElementById("entryType").value;
   draft.type = selectedType === "__new__" ? document.getElementById("entryNewType").value : selectedType;
-  draft.publication_date = month && day ? `${month}-${day.padStart(2, "0")}` : month;
+  draft.publication_date = document.getElementById("entryPublicationDate").value.trim();
   draft.unread = document.getElementById("entryUnread").checked;
   draft.star = document.getElementById("entryStar").checked;
 }
@@ -121,7 +119,9 @@ function renderDraft() {
   document.getElementById("entryStar").checked = Boolean(draft.star);
   document.getElementById("entryPdf").value = "";
   document.getElementById("draftCounter").textContent = `${activeDraftIndex + 1} / ${entryDrafts.length}`;
-  document.getElementById("draftSource").textContent = `${draft.sources.join(" + ")}${draft.pdfFile ? ` · PDF: ${draft.pdfFile.name}` : ""}`;
+  const pdfStatus = document.getElementById("draftPdfStatus");
+  pdfStatus.hidden = !draft.pdfFile;
+  pdfStatus.textContent = draft.pdfFile ? `Current draft PDF: ${draft.pdfFile.name}` : "";
   document.getElementById("previousDraftBtn").disabled = activeDraftIndex === 0;
   document.getElementById("nextDraftBtn").disabled = activeDraftIndex >= entryDrafts.length - 1;
 }
@@ -255,12 +255,7 @@ function setupEntries(rows) {
 }
 
 function setPublicationDate(value) {
-  const parts = (value || "").split("-");
-  const month = document.getElementById("entryPublicationMonth");
-  const day = document.getElementById("entryPublicationDay");
-  month.value = parts.length >= 2 ? `${parts[0]}-${parts[1]}` : "";
-  day.disabled = !month.value;
-  day.value = parts.length === 3 ? String(parseInt(parts[2], 10)) : "";
+  document.getElementById("entryPublicationDate").value = value || "";
 }
 
 function resetForm(clearUrl = true) {
@@ -476,11 +471,6 @@ async function init() {
       if (row) editEntry(row);
     }
 
-    document.getElementById("entryPublicationMonth").addEventListener("input", (event) => {
-      const day = document.getElementById("entryPublicationDay");
-      day.disabled = !event.target.value;
-      if (day.disabled) day.value = "";
-    });
     document.getElementById("cancelEditBtn").addEventListener("click", () => resetForm(true));
 
     document.getElementById("undoBtn").addEventListener("click", async () => {
@@ -639,8 +629,6 @@ async function init() {
       const form = event.currentTarget;
       const button = document.getElementById("createEntryBtn");
       const status = document.getElementById("entryStatus");
-      const month = document.getElementById("entryPublicationMonth").value;
-      const day = document.getElementById("entryPublicationDay").value;
       const selectedType = document.getElementById("entryType").value;
       captureDraft();
       const pdfFile = form.dataset.mode === "edit"
@@ -649,7 +637,7 @@ async function init() {
       const payload = {
         code: document.getElementById("entryCode").value,
         title: document.getElementById("entryTitle").value,
-        publication_date: month && day ? `${month}-${day.padStart(2, "0")}` : month,
+        publication_date: document.getElementById("entryPublicationDate").value.trim(),
         year: form.dataset.legacyYear || "",
         type: selectedType === "__new__" ? document.getElementById("entryNewType").value : selectedType,
         author: document.getElementById("entryAuthor").value,
