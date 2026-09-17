@@ -30,7 +30,7 @@ code,abstract
 
 ## Minimal Workflow
 
-1. Start the viewer server and open **Options → Add bibliography entry**.
+1. Start the viewer server and open **Add**.
 2. Stage one or more RIS/BibTeX records, DOI/arXiv identifiers, and optional PDFs.
 3. Review each draft page and confirm entries one at a time. Nothing is added before confirmation.
 4. If needed, sync codes and filenames from later title corrections:
@@ -76,7 +76,7 @@ Then open `http://localhost:8000/VIEWER/viewer.html`.
 The metadata catalog is shared through Git, while `PDFs/` is intentionally ignored.
 Each computer can therefore hold a different subset of the documents.
 
-On this laptop, add new references through **Options → Add bibliography entry**.
+On this laptop, add new references through the dedicated **Add** page.
 The review queue accepts batches of RIS/BibTeX records and identifiers, enriches
 them from Crossref/arXiv, and cautiously fills remaining blanks from selected PDFs.
 Each draft must be confirmed explicitly. A confirmed PDF is copied into `PDFs/`,
@@ -147,8 +147,8 @@ python3 CODE/bib.py mark-pdf-host --host COMPUTER-NAME --all
   PDF scan and optionally copy an uploaded PDF into `PDFs/`; it also supports metadata-only references.
   Its publication month is optional, an exact day can be included when known, and
   document types come from the catalog with an option to add a new type.
-- Catalog-management tools (create/edit entries, merge duplicates, and manage types)
-  live on the separate `VIEWER/manage.html` page, linked from the main finder.
+- Entry creation and editing live on `VIEWER/add.html`; maintenance tools such as
+  duplicate merging and type management live on `VIEWER/manage.html`.
 - Options includes a fixed-wallpaper selector shared by both pages, adjustable transparency,
   and JPEG/PNG/WebP uploads stored in `VIEWER/wallpapers/custom/`.
 - Saved Filter support via `SAVED_LISTS/*.json`.

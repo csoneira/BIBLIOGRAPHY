@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta http-equiv="Cache-Control" content="no-store" />
+    <title>Add</title>
+    <style>
+      :root { --bg:#f8f4ef; --ink:#1f2428; --muted:#5f6a6f; --accent:#1e4f7a; --card:#ffffffdd; --shadow:0 12px 30px rgba(31,36,40,.12); }
+      * { box-sizing:border-box; }
+      body { margin:0; min-height:100vh; color:var(--ink); background:radial-gradient(circle at top,#fff6e8,var(--bg) 40%) fixed; font-family:"Palatino Linotype","Book Antiqua",Palatino,serif; }
+      header, main { width:80vw; margin:0 auto; }
+      header { padding:32px 0 20px; }
+      .page-heading { display:inline-block; max-width:100%; padding:12px 16px; border:1px solid rgba(255,255,255,.7); border-radius:12px; background:rgba(255,255,255,.82); box-shadow:0 6px 18px rgba(31,36,40,.1); backdrop-filter:blur(8px); }
+      h1 { margin:0 0 6px; font-size:clamp(28px,3vw,40px); letter-spacing:.02em; }
+      p { color:var(--muted); }
+      .page-heading > p { margin:0; font-size:16px; }
+      nav { display:flex; gap:10px; align-items:center; margin-top:16px; }
+      .nav-link { display:inline-block; padding:10px 18px; border-radius:999px; background:#e2e6ea; color:var(--ink); text-decoration:none; font-size:14px; }
+      .nav-link.active { background:var(--accent); color:#fff; }
+      .panel { margin-bottom:20px; padding:20px; border-radius:16px; background:var(--card); box-shadow:var(--shadow); }
+      summary { color:var(--accent); cursor:pointer; font-size:18px; font-weight:600; }
+      .grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); gap:12px; margin-top:16px; }
+      .wide { grid-column:1/-1; }
+      label { display:block; margin-bottom:6px; color:var(--muted); font-size:13px; }
+      input, select, textarea { width:100%; padding:10px 12px; border:1px solid #d6d6d6; border-radius:10px; background:#fff; font:inherit; }
+      input[type="file"] { padding:8px 10px; }
+      textarea { min-height:90px; resize:vertical; }
+      .field-help { margin:6px 0 0; color:var(--muted); font-size:12px; }
+      .import-workspace { margin-top:16px; padding:16px; border:1px solid #d9d5d0; border-radius:12px; background:rgba(255,255,255,.6); }
+      .import-step + .import-step { margin-top:14px; }
+      .import-step textarea { min-height:76px; }
+      .draft-nav { display:flex; align-items:center; justify-content:center; gap:12px; margin:18px 0 4px; flex-wrap:wrap; }
+      .draft-nav strong { min-width:90px; text-align:center; color:var(--accent); }
+      .draft-source { color:var(--muted); font-size:12px; text-align:center; }
+      .actions { display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin-top:16px; }
+      .checks { display:flex; gap:18px; }
+      .checks label { display:flex; align-items:center; gap:6px; margin:0; }
+      .checks input { width:auto; }
+      button { border:0; padding:10px 18px; border-radius:999px; cursor:pointer; font:inherit; font-size:14px; }
+      .primary { background:var(--accent); color:#fff; }
+      .secondary { background:#e2e6ea; color:var(--ink); }
+      .danger { background:#f9e4e1; color:#8a2417; border:1px solid #e8b8b1; }
+      .status { color:var(--muted); font-size:13px; }
+      [hidden] { display:none !important; }
+      @media (max-width:720px) { header, main { width:88vw; } }
+    </style>
+  </head>
+  <body>
+    <header>
+      <div class="page-heading">
+        <h1>Add</h1>
+        <p>Stage, enrich, review, and confirm new bibliography entries.</p>
+      </div>
+      <nav aria-label="Main navigation">
+        <a class="nav-link" href="viewer.html">Library</a>
+        <a class="nav-link active" href="add.html" aria-current="page">Add</a>
+        <a class="nav-link" href="manage.html">Options</a>
+      </nav>
+    </header>
+    <main id="addRoot"><p id="addLoading">Loading entry workspace…</p></main>
+    <div id="manageSupport" hidden></div>
+    <script src="wallpaper.js"></script>
+    <script src="add-loader.js"></script>
+  </body>
+</html>

@@ -281,7 +281,7 @@ function resetForm(clearUrl = true) {
   setPublicationDate("");
   updateNewTypeVisibility();
   startDraftQueue();
-  if (clearUrl) history.replaceState({}, "", "manage.html");
+  if (clearUrl) history.replaceState({}, "", location.pathname.endsWith("/add.html") ? "add.html" : "manage.html");
 }
 
 function editEntry(row) {
@@ -687,7 +687,7 @@ async function init() {
         }
         status.textContent = `${editing ? "Updated" : "Created"} ${saved.code}${pdfFile ? " with a local PDF" : ""}`;
         if (editing) {
-          window.setTimeout(() => { location.href = `manage.html?edit=${encodeURIComponent(saved.code)}`; }, 500);
+          window.setTimeout(() => { location.href = `add.html?edit=${encodeURIComponent(saved.code)}`; }, 500);
         } else {
           entryDrafts.splice(activeDraftIndex, 1);
           if (!entryDrafts.length) entryDrafts.push(blankDraft());
@@ -706,7 +706,7 @@ async function init() {
           document.getElementById("entryPdfHostsContainer").hidden = false;
           document.getElementById("editPdfContainer").hidden = false;
           document.getElementById("entryImportWorkspace").hidden = true;
-          history.replaceState({}, "", `manage.html?edit=${encodeURIComponent(saved.code)}`);
+          history.replaceState({}, "", `add.html?edit=${encodeURIComponent(saved.code)}`);
           alert(`The bibliography entry was saved, but the PDF was not attached. You can correct the file selection and try again.\n\n${error.message}`);
         } else {
           status.textContent = "Save failed";

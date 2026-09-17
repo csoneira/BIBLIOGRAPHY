@@ -17,6 +17,7 @@
       .page-heading > p { margin:0; font-size:16px; }
       a { color:var(--accent); }
       .nav-link { display:inline-block; padding:10px 18px; border-radius:999px; background:#e2e6ea; color:var(--ink); text-decoration:none; font-size:14px; }
+      .nav-link.active { background:var(--accent); color:#fff; }
       nav { display:flex; gap:10px; align-items:center; margin-top:16px; }
       .panel { margin-bottom:20px; padding:20px; border-radius:16px; background:var(--card); box-shadow:var(--shadow); }
       summary { color:var(--accent); cursor:pointer; font-size:18px; font-weight:600; }
@@ -72,15 +73,17 @@
     <header>
       <div class="page-heading">
         <h1>Options</h1>
-        <p>Create and edit catalog entries, merge duplicates, types, and personal keywords.</p>
+        <p>Maintain PDFs, saved filters, duplicate entries, types, and personal keywords.</p>
       </div>
       <nav>
-        <a class="nav-link" href="viewer.html">Bibliography</a>
+        <a class="nav-link" href="viewer.html">Library</a>
+        <a class="nav-link" href="add.html">Add</a>
+        <a class="nav-link active" href="manage.html" aria-current="page">Options</a>
       </nav>
     </header>
 
     <main>
-      <details class="panel" id="entryPanel">
+      <details class="panel" id="entryPanel" hidden>
         <summary id="entryFormTitle">Add bibliography entry</summary>
         <form id="entryForm">
           <input id="entryCode" type="hidden" />

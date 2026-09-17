@@ -408,6 +408,7 @@
         text-decoration: none;
         font-size: 14px;
       }
+      .nav-link.active { background:var(--accent); color:#fff; }
 
       .entry-edit-only[hidden] {
         display: none;
@@ -639,9 +640,11 @@
         <h1>Bibliography</h1>
         <p>Search, filter, and annotate metadata, then open local PDFs directly.</p>
       </div>
-      <div class="actions">
+      <nav class="actions" aria-label="Main navigation">
+        <a class="nav-link active" href="viewer.html" aria-current="page">Library</a>
+        <a class="nav-link" href="add.html">Add</a>
         <a class="nav-link" href="manage.html">Options</a>
-      </div>
+      </nav>
     </header>
 
     <section class="panel">

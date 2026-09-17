@@ -395,7 +395,7 @@ function renderResults(rows) {
       editButton.className = "secondary compact";
       editButton.textContent = "Edit";
       editButton.addEventListener("click", () => {
-        window.location.href = `manage.html?edit=${encodeURIComponent(row.code)}`;
+        window.location.href = `add.html?edit=${encodeURIComponent(row.code)}`;
       });
       manageActions.appendChild(editButton);
 
