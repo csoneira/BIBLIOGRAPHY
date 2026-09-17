@@ -74,6 +74,50 @@
     </header>
 
     <main>
+      <details class="panel" id="entryPanel">
+        <summary id="entryFormTitle">Add bibliography entry</summary>
+        <form id="entryForm">
+          <input id="entryCode" type="hidden" />
+          <div class="grid">
+            <div class="wide">
+              <label for="entryLookup">DOI or arXiv identifier</label>
+              <div class="inline">
+                <input id="entryLookup" type="text" placeholder="10.xxxx/... or arXiv:2401.12345" autocomplete="off" />
+                <button class="secondary" id="lookupBtn" type="button">Fill fields</button>
+              </div>
+              <p class="field-help">Enter an identifier and fill the form automatically. Check or edit the publisher's metadata before saving.</p>
+            </div>
+            <div><label for="entryTitle">Title *</label><input id="entryTitle" required /></div>
+            <div><label for="entryPublicationMonth">Publication month</label><input id="entryPublicationMonth" type="month" /></div>
+            <div><label for="entryPublicationDay">Day (optional)</label><input id="entryPublicationDay" type="number" min="1" max="31" disabled /></div>
+            <div><label for="entryType">Type *</label><select id="entryType" required></select></div>
+            <div id="entryNewTypeContainer" hidden><label for="entryNewType">New type *</label><input id="entryNewType" /></div>
+            <div><label for="entryAuthor">Author(s)</label><input id="entryAuthor" /></div>
+            <div><label for="entryJournal">Journal</label><input id="entryJournal" /></div>
+            <div><label for="entryDoi">DOI</label><input id="entryDoi" placeholder="10.xxxx/..." /></div>
+            <div><label for="entryKeywords">Keywords</label><input id="entryKeywords" /></div>
+            <div><label for="entryMyKeywords">My keywords</label><input id="entryMyKeywords" /></div>
+            <div id="entryPdfHostsContainer" hidden><label for="entryPdfHosts">PDF computers</label><input id="entryPdfHosts" placeholder="naranjito; manzanita" /></div>
+            <div class="wide">
+              <label for="entryPdf">PDF file (optional)</label>
+              <input id="entryPdf" type="file" accept="application/pdf,.pdf" />
+              <p class="field-help">The file will be copied into PDFs, checked, and marked Local on this computer.</p>
+            </div>
+            <div class="wide"><label for="entryAbstract">Abstract</label><textarea id="entryAbstract"></textarea></div>
+            <div class="wide"><label for="entryNotes">Notes</label><textarea id="entryNotes"></textarea></div>
+          </div>
+          <div class="actions">
+            <div class="checks">
+              <label><input id="entryUnread" type="checkbox" checked /> Unread</label>
+              <label><input id="entryStar" type="checkbox" /> Starred</label>
+            </div>
+            <button class="primary" id="createEntryBtn" type="submit">Add entry</button>
+            <button class="secondary" id="cancelEditBtn" type="button" hidden>Cancel edit</button>
+            <span class="status" id="entryStatus"></span>
+          </div>
+        </form>
+      </details>
+
       <section class="panel" aria-labelledby="maintenanceTitle">
         <h2 id="maintenanceTitle">Maintenance</h2>
         <p>Check the integrity of PDFs stored on this computer.</p>
@@ -140,50 +184,6 @@
           <span class="status" id="savedFilterManageStatus"></span>
         </div>
         <p>Renaming or deleting a filter can be reversed with Undo last change.</p>
-      </details>
-
-      <details class="panel" id="entryPanel">
-        <summary id="entryFormTitle">Add bibliography entry</summary>
-        <form id="entryForm">
-          <input id="entryCode" type="hidden" />
-          <div class="grid">
-            <div class="wide">
-              <label for="entryLookup">DOI or arXiv identifier</label>
-              <div class="inline">
-                <input id="entryLookup" type="text" placeholder="10.xxxx/... or arXiv:2401.12345" autocomplete="off" />
-                <button class="secondary" id="lookupBtn" type="button">Fill fields</button>
-              </div>
-              <p class="field-help">Enter an identifier and fill the form automatically. Check or edit the publisher's metadata before saving.</p>
-            </div>
-            <div><label for="entryTitle">Title *</label><input id="entryTitle" required /></div>
-            <div><label for="entryPublicationMonth">Publication month</label><input id="entryPublicationMonth" type="month" /></div>
-            <div><label for="entryPublicationDay">Day (optional)</label><input id="entryPublicationDay" type="number" min="1" max="31" disabled /></div>
-            <div><label for="entryType">Type *</label><select id="entryType" required></select></div>
-            <div id="entryNewTypeContainer" hidden><label for="entryNewType">New type *</label><input id="entryNewType" /></div>
-            <div><label for="entryAuthor">Author(s)</label><input id="entryAuthor" /></div>
-            <div><label for="entryJournal">Journal</label><input id="entryJournal" /></div>
-            <div><label for="entryDoi">DOI</label><input id="entryDoi" placeholder="10.xxxx/..." /></div>
-            <div><label for="entryKeywords">Keywords</label><input id="entryKeywords" /></div>
-            <div><label for="entryMyKeywords">My keywords</label><input id="entryMyKeywords" /></div>
-            <div id="entryPdfHostsContainer" hidden><label for="entryPdfHosts">PDF computers</label><input id="entryPdfHosts" placeholder="naranjito; manzanita" /></div>
-            <div class="wide">
-              <label for="entryPdf">PDF file (optional)</label>
-              <input id="entryPdf" type="file" accept="application/pdf,.pdf" />
-              <p class="field-help">The file will be copied into PDFs, checked, and marked Local on this computer.</p>
-            </div>
-            <div class="wide"><label for="entryAbstract">Abstract</label><textarea id="entryAbstract"></textarea></div>
-            <div class="wide"><label for="entryNotes">Notes</label><textarea id="entryNotes"></textarea></div>
-          </div>
-          <div class="actions">
-            <div class="checks">
-              <label><input id="entryUnread" type="checkbox" checked /> Unread</label>
-              <label><input id="entryStar" type="checkbox" /> Starred</label>
-            </div>
-            <button class="primary" id="createEntryBtn" type="submit">Add entry</button>
-            <button class="secondary" id="cancelEditBtn" type="button" hidden>Cancel edit</button>
-            <span class="status" id="entryStatus"></span>
-          </div>
-        </form>
       </details>
 
       <details class="panel">

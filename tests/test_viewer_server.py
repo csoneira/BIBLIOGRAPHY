@@ -176,6 +176,29 @@ class TestCreateMetadataEntry(unittest.TestCase):
             self.assertEqual(history[0]["status"], "undone")
             self.assertFalse(history[0]["undoable"])
 
+    def test_change_history_keeps_only_ten_movements(self):
+        repo_root = Path(__file__).resolve().parents[1]
+        server = load_server(repo_root / "CODE" / "viewer_server.py")
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            root = Path(tmp_dir)
+            server.ROOT = root
+            server.METADATA_FILE = root / "METADATA" / "metadata.csv"
+            server.ABSTRACTS_FILE = root / "METADATA" / "abstracts.csv"
+            server.SAVED_LISTS_DIR = root / "SAVED_LISTS"
+            server.CHANGE_BACKUP_DIR = root / "METADATA" / "backups" / "viewer_changes"
+            for index in range(12):
+                server.create_change_snapshot(f"movement {index}")
+            discarded = server.create_change_snapshot("failed movement")
+            server.discard_snapshot(discarded)
+
+            history = server.change_history()
+
+            self.assertEqual(len(history), 10)
+            self.assertEqual(history[0]["action"], "movement 11")
+            self.assertEqual(history[-1]["action"], "movement 2")
+            self.assertEqual(len(list(server.CHANGE_BACKUP_DIR.iterdir())), 10)
+
     def test_undo_reverses_created_and_trashed_pdf_moves(self):
         repo_root = Path(__file__).resolve().parents[1]
         server = load_server(repo_root / "CODE" / "viewer_server.py")

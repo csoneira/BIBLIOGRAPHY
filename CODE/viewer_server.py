@@ -23,6 +23,7 @@ SAVED_LISTS_DIR = ROOT / "SAVED_LISTS"
 ABSTRACTS_FILE = ROOT / "METADATA" / "abstracts.csv"
 METADATA_FILE = ROOT / "METADATA" / "metadata.csv"
 CHANGE_BACKUP_DIR = ROOT / "METADATA" / "backups" / "viewer_changes"
+CHANGE_HISTORY_LIMIT = 10
 CUSTOM_WALLPAPER_DIR = ROOT / "VIEWER" / "wallpapers" / "custom"
 _ABSTRACT_CACHE = {"mtime_ns": None, "data": {}}
 _WRITE_LOCK = threading.Lock()
@@ -123,9 +124,32 @@ def list_change_snapshots() -> list:
     )
 
 
-def change_history(limit: int = 20) -> list:
+def prune_change_history(limit: int = CHANGE_HISTORY_LIMIT) -> int:
+    if not CHANGE_BACKUP_DIR.exists():
+        return 0
+    discarded = sorted(
+        path for path in CHANGE_BACKUP_DIR.glob("change-*.discarded") if path.is_dir()
+    )
+    movements = sorted(
+        path
+        for path in CHANGE_BACKUP_DIR.glob("change-*")
+        if path.is_dir() and not path.name.endswith(".discarded")
+    )
+    obsolete = discarded + movements[:-limit] if limit else discarded + movements
+    removed = 0
+    for path in obsolete:
+        try:
+            shutil.rmtree(path)
+            removed += 1
+        except FileNotFoundError:
+            pass
+    return removed
+
+
+def change_history(limit: int = CHANGE_HISTORY_LIMIT) -> list:
     if not CHANGE_BACKUP_DIR.exists():
         return []
+    prune_change_history(limit)
     active = list_change_snapshots()
     latest = active[-1] if active else None
     history = []
@@ -1536,6 +1560,8 @@ class Handler(SimpleHTTPRequestHandler):
         self._send_json({"code": code, field_name: value})
 
     def _send_json(self, payload, status=200):
+        if status < 400:
+            prune_change_history()
         self.send_response(status)
         self.send_header("Content-Type", "application/json")
         self.end_headers()
