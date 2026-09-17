@@ -77,6 +77,10 @@ class TestMetadataSchema(unittest.TestCase):
                 if unread:
                     self.assertIn(unread, {"1"})
 
+                annotated = (row.get("annotated") or "").strip()
+                if annotated:
+                    self.assertIn(annotated, {"1"})
+
                 added_at = (row.get("added_at") or "").strip()
                 if added_at:
                     self.assertRegex(added_at, r"^\d{4}-\d{2}-\d{2}$")

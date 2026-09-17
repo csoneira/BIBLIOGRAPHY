@@ -75,7 +75,7 @@ function blankDraft() {
   return {
     title: "", publication_date: "", type: "article", author: "", journal: "", doi: "",
     keywords: "", my_keywords: "", abstract: "", notes: "", unread: true, star: false,
-    pdfFile: null, sources: ["Manual draft"],
+    annotated: false, pdfFile: null, sources: ["Manual draft"],
   };
 }
 
@@ -131,6 +131,7 @@ function captureDraft() {
   draft.publication_date = document.getElementById("entryPublicationDate").value.trim();
   draft.unread = document.getElementById("entryUnread").checked;
   draft.star = document.getElementById("entryStar").checked;
+  draft.annotated = document.getElementById("entryAnnotated").checked;
 }
 
 function renderDraft() {
@@ -150,6 +151,7 @@ function renderDraft() {
   updateNewTypeVisibility();
   document.getElementById("entryUnread").checked = draft.unread !== false;
   document.getElementById("entryStar").checked = Boolean(draft.star);
+  document.getElementById("entryAnnotated").checked = Boolean(draft.annotated);
   document.getElementById("entryPdf").value = "";
   document.getElementById("draftCounter").textContent = `${activeDraftIndex + 1} / ${entryDrafts.length}`;
   const pdfStatus = document.getElementById("draftPdfStatus");
@@ -172,6 +174,7 @@ function mergeDraft(draft, values, overwrite = false) {
     if (value && (overwrite || !String(draft[field] || "").trim())) draft[field] = value;
   });
   if (values.source && !draft.sources.includes(values.source)) draft.sources.push(values.source);
+  if (values.annotated) draft.annotated = true;
   return draft;
 }
 
@@ -307,6 +310,7 @@ function resetForm(clearUrl = true) {
   document.getElementById("editPdfContainer").hidden = true;
   document.getElementById("entryStatus").textContent = "";
   document.getElementById("entryUnread").checked = true;
+  document.getElementById("entryAnnotated").checked = false;
   const types = document.getElementById("entryType");
   if ([...types.options].some((option) => option.value === "article")) types.value = "article";
   setPublicationDate("");
@@ -335,6 +339,7 @@ function editEntry(row) {
   document.getElementById("entryNotes").value = row.notes || "";
   document.getElementById("entryUnread").checked = row.unread === "1";
   document.getElementById("entryStar").checked = row.star === "1";
+  document.getElementById("entryAnnotated").checked = row.annotated === "1";
   document.getElementById("entryPdfHosts").value = row.pdf_hosts || "";
   document.getElementById("entryPdfHostsContainer").hidden = false;
   document.getElementById("editPdfContainer").hidden = false;
@@ -709,6 +714,7 @@ async function init() {
         notes: document.getElementById("entryNotes").value,
         unread: document.getElementById("entryUnread").checked,
         star: document.getElementById("entryStar").checked,
+        annotated: document.getElementById("entryAnnotated").checked,
       };
       if (form.dataset.mode === "edit") payload.pdf_hosts = document.getElementById("entryPdfHosts").value;
       button.disabled = true;

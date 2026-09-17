@@ -120,6 +120,7 @@ function applyFilters(rows, filters) {
     const typeValue = (row.type || "").toLowerCase();
     const starValue = (row.star || "").toString();
     const unreadValue = (row.unread || "").toString();
+    const annotatedValue = (row.annotated || "").toString();
     const addedAt = (row.added_at || "").trim();
     const lastViewed = (row.last_viewed || "").trim();
     if (filters.fromDate && (!publicationRange || publicationRange.end < filters.fromDate)) {
@@ -138,6 +139,9 @@ function applyFilters(rows, filters) {
       return false;
     }
     if (filters.unreadOnly && unreadValue !== "1") {
+      return false;
+    }
+    if (filters.annotatedOnly && annotatedValue !== "1") {
       return false;
     }
     if (filters.location && row.pdf_status !== filters.location) {
@@ -350,6 +354,23 @@ function renderResults(rows) {
 
     const actions = document.createElement("div");
     actions.className = "card-actions";
+    const annotated = document.createElement("button");
+    annotated.className = `annotated${row.annotated === "1" ? " active" : ""}`;
+    annotated.textContent = row.annotated === "1" ? "Annotated" : "Not annotated";
+    annotated.title = "Toggle PDF annotation status";
+    annotated.addEventListener("click", async (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      const next = row.annotated === "1" ? "" : "1";
+      try {
+        await setAnnotatedOnServer(row.code, next);
+        row.annotated = next;
+        annotated.textContent = row.annotated === "1" ? "Annotated" : "Not annotated";
+        annotated.classList.toggle("active", row.annotated === "1");
+      } catch (err) {
+        alert("Failed to save annotation status. Keep the viewer server running.");
+      }
+    });
     const location = document.createElement("span");
     const storedHosts = (row.pdf_hosts || "").trim();
     if (row.pdf_status === "local") {
@@ -367,6 +388,7 @@ function renderResults(rows) {
     }
     actions.appendChild(unread);
     actions.appendChild(star);
+    actions.appendChild(annotated);
     actions.appendChild(location);
     header.appendChild(actions);
 
@@ -592,6 +614,7 @@ function getFilters() {
     title: document.getElementById("titleFilter").value.trim().toLowerCase(),
     starOnly: document.getElementById("starOnly").checked,
     unreadOnly: document.getElementById("unreadOnly").checked,
+    annotatedOnly: document.getElementById("annotatedOnly").checked,
     location: document.getElementById("locationFilter").value,
     keyword: document.getElementById("keyword").value.trim().toLowerCase(),
     myKeyword: document.getElementById("myKeyword").value.trim().toLowerCase(),
@@ -666,6 +689,10 @@ async function setUnreadOnServer(code, unread) {
     throw new Error("Failed to save unread.");
   }
   return response.json();
+}
+
+async function setAnnotatedOnServer(code, annotated) {
+  return postJson("/toggle-annotated", { code, annotated });
 }
 
 async function openPdfOnServer(code) {
@@ -947,6 +974,7 @@ function setFilters(filters = {}) {
   document.getElementById("titleFilter").value = filters.title || "";
   document.getElementById("starOnly").checked = Boolean(filters.starOnly);
   document.getElementById("unreadOnly").checked = Boolean(filters.unreadOnly);
+  document.getElementById("annotatedOnly").checked = Boolean(filters.annotatedOnly);
   document.getElementById("locationFilter").value = filters.location || "";
   document.getElementById("keyword").value = filters.keyword || "";
   document.getElementById("myKeyword").value = filters.myKeyword || "";

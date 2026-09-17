@@ -27,6 +27,7 @@ class TestCreateMetadataEntry(unittest.TestCase):
                     "type": "article",
                     "author": "Example Author",
                     "unread": True,
+                    "annotated": True,
                 }
             )
             second = server.create_metadata_entry(
@@ -44,6 +45,7 @@ class TestCreateMetadataEntry(unittest.TestCase):
             self.assertEqual(first["year"], "2024")
             self.assertEqual(first["pdf_hosts"], "")
             self.assertEqual(first["unread"], "1")
+            self.assertEqual(first["annotated"], "1")
             with server.METADATA_FILE.open(newline="") as handle:
                 rows = list(csv.DictReader(handle))
             self.assertEqual(len(rows), 2)
@@ -284,6 +286,33 @@ class TestCreateMetadataEntry(unittest.TestCase):
         self.assertEqual(arxiv["arxiv"], "2401.12345v2")
         self.assertEqual(arxiv["publication_date"], "2024-01-20")
         self.assertEqual(arxiv["type"], "preprint")
+
+    def test_detects_structured_pdf_annotations(self):
+        repo_root = Path(__file__).resolve().parents[1]
+        server = load_server(repo_root / "CODE" / "viewer_server.py")
+        try:
+            from PyPDF2 import PdfWriter
+        except ImportError:
+            self.skipTest("PyPDF2 is not installed")
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            plain = Path(tmp_dir) / "plain.pdf"
+            annotated = Path(tmp_dir) / "annotated.pdf"
+            writer = PdfWriter()
+            writer.add_blank_page(100, 100)
+            with plain.open("wb") as handle:
+                writer.write(handle)
+            self.assertFalse(server.pdf_has_annotations(plain))
+
+            writer = PdfWriter()
+            writer.add_blank_page(100, 100)
+            writer.add_annotation(0, {
+                "/Type": "/Annot", "/Subtype": "/Text", "/Rect": [0, 0, 10, 10],
+                "/Contents": "A note",
+            })
+            with annotated.open("wb") as handle:
+                writer.write(handle)
+            self.assertTrue(server.pdf_has_annotations(annotated))
 
     def test_parses_multiple_bibtex_and_ris_records(self):
         repo_root = Path(__file__).resolve().parents[1]

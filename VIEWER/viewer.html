@@ -455,6 +455,18 @@
         line-height: 1;
       }
 
+      .annotated {
+        background:transparent;
+        color:#687177;
+        border:1px solid #d6d6d6;
+        border-radius:999px;
+        padding:3px 10px;
+        font-size:12px;
+        font-weight:600;
+        line-height:1;
+      }
+      .annotated.active { background:#eee6f7; color:#6b4c91; border-color:#c9b5df; }
+
       .location-badge {
         border: 1px solid #d6d6d6;
         border-radius: 999px;
@@ -713,6 +725,7 @@
             <div class="status-options">
               <label><input id="starOnly" type="checkbox" /> Starred</label>
               <label><input id="unreadOnly" type="checkbox" /> Unread</label>
+              <label><input id="annotatedOnly" type="checkbox" /> Annotated</label>
             </div>
           </div>
         </div>

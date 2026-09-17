@@ -41,6 +41,7 @@ METADATA_FIELDS = [
     "my_keywords",
     "star",
     "unread",
+    "annotated",
     "added_at",
     "pdf_hosts",
     "pdf_sha256",
@@ -316,6 +317,7 @@ def create_metadata_entry(payload: dict) -> dict:
             "my_keywords": str(payload.get("my_keywords") or "").strip(),
             "star": "1" if payload.get("star") in (True, "1", 1) else "",
             "unread": "1" if payload.get("unread") in (True, "1", 1) else "",
+            "annotated": "1" if payload.get("annotated") in (True, "1", 1) else "",
             "added_at": datetime.now(timezone.utc).strftime("%Y-%m-%d"),
             # Metadata-only entries deliberately have no recorded PDF host.
             "pdf_hosts": "",
@@ -375,6 +377,7 @@ def update_metadata_entry(payload: dict) -> dict:
                 "my_keywords": str(payload.get("my_keywords") or "").strip(),
                 "star": "1" if payload.get("star") in (True, "1", 1) else "",
                 "unread": "1" if payload.get("unread") in (True, "1", 1) else "",
+                "annotated": "1" if payload.get("annotated") in (True, "1", 1) else "",
                 "notes": str(payload.get("notes") or "").strip(),
             }
         )
@@ -420,6 +423,30 @@ def sha256_file(path: Path) -> str:
         for chunk in iter(lambda: handle.read(1024 * 1024), b""):
             digest.update(chunk)
     return digest.hexdigest()
+
+
+def pdf_has_annotations(path: Path) -> bool:
+    """Detect structured reader annotations; flattened page markings are not distinguishable."""
+    try:
+        from PyPDF2 import PdfReader
+
+        annotation_types = {
+            "/Text", "/FreeText", "/Highlight", "/Underline", "/Squiggly",
+            "/StrikeOut", "/Ink", "/Stamp", "/Caret", "/Sound",
+            "/FileAttachment", "/Redact",
+        }
+        reader = PdfReader(str(path), strict=False)
+        for page in reader.pages:
+            references = page.get("/Annots", []) or []
+            if hasattr(references, "get_object"):
+                references = references.get_object()
+            for reference in references:
+                annotation = reference.get_object()
+                if str(annotation.get("/Subtype", "")) in annotation_types:
+                    return True
+    except Exception:
+        return False
+    return False
 
 
 def write_abstracts_map(abstracts: dict) -> None:
@@ -472,7 +499,7 @@ def merge_metadata_entries(source_code: str, target_code: str, snapshot: Path | 
     if source is None or target is None:
         raise LookupError("Source or destination entry not found")
 
-    special = {"code", "keywords", "my_keywords", "pdf_hosts", "star", "unread", "notes", "added_at", "last_viewed"}
+    special = {"code", "keywords", "my_keywords", "pdf_hosts", "star", "unread", "annotated", "notes", "added_at", "last_viewed"}
     for field in METADATA_FIELDS:
         if field not in special and not str(target.get(field) or "").strip() and str(source.get(field) or "").strip():
             target[field] = source[field]
@@ -480,6 +507,7 @@ def merge_metadata_entries(source_code: str, target_code: str, snapshot: Path | 
         target[field] = merge_delimited_values(target.get(field), source.get(field))
     target["star"] = "1" if target.get("star") == "1" or source.get("star") == "1" else ""
     target["unread"] = "1" if target.get("unread") == "1" or source.get("unread") == "1" else ""
+    target["annotated"] = "1" if target.get("annotated") == "1" or source.get("annotated") == "1" else ""
     target["added_at"] = min(filter(None, [target.get("added_at", ""), source.get("added_at", "")]), default="")
     target["last_viewed"] = max(target.get("last_viewed", ""), source.get("last_viewed", ""))
     source_notes = str(source.get("notes") or "").strip()
@@ -825,6 +853,7 @@ def inspect_pdf_file(path: Path, filename: str = "") -> dict:
         "doi": normalize_doi(doi_match.group(0).rstrip(".,;)") if doi_match else ""),
         "keywords": _clean_citation_value(info.get("keywords", "")),
         "abstract": abstract,
+        "annotated": pdf_has_annotations(path),
         "source": "PDF scan",
     }
 
@@ -1130,6 +1159,7 @@ class Handler(SimpleHTTPRequestHandler):
                 "/undo-last-change",
                 "/toggle-star",
                 "/toggle-unread",
+                "/toggle-annotated",
                 "/open-pdf",
             }
         )
@@ -1228,6 +1258,9 @@ class Handler(SimpleHTTPRequestHandler):
                 return
             if path == "/toggle-unread":
                 self._handle_toggle_unread()
+                return
+            if path == "/toggle-annotated":
+                self._handle_toggle_annotated()
                 return
             if path == "/save-notes":
                 self._handle_save_notes()
@@ -1442,15 +1475,21 @@ class Handler(SimpleHTTPRequestHandler):
                 self.send_error(400, "The uploaded file is not a valid PDF")
                 return
             temp_path.replace(target)
+            detected_annotations = pdf_has_annotations(target)
             hosts = [host.strip() for host in (row.get("pdf_hosts") or "").split(";")]
             update_entry_hosts(code, hosts + [socket.gethostname()])
             rows = load_metadata_rows()
             for candidate in rows:
                 if candidate.get("code", "").strip() == code:
                     candidate["pdf_sha256"] = digest.hexdigest()
+                    if detected_annotations:
+                        candidate["annotated"] = "1"
             write_metadata_rows(rows)
             update_snapshot_manifest(snapshot, created_pdf=str(target.relative_to(ROOT)))
-        self._send_json({"code": code, "hostname": socket.gethostname(), "sha256": digest.hexdigest()})
+        self._send_json({
+            "code": code, "hostname": socket.gethostname(), "sha256": digest.hexdigest(),
+            "annotated": detected_annotations,
+        })
 
     def _handle_set_pdf_hosts(self):
         try:
@@ -1719,6 +1758,9 @@ class Handler(SimpleHTTPRequestHandler):
 
     def _handle_toggle_unread(self):
         self._handle_toggle_flag("unread")
+
+    def _handle_toggle_annotated(self):
+        self._handle_toggle_flag("annotated")
 
     def _handle_save_notes(self):
         content_length = int(self.headers.get("Content-Length", "0"))

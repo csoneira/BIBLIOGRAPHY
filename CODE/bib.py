@@ -35,6 +35,7 @@ FIELDS = [
     "my_keywords",
     "star",
     "unread",
+    "annotated",
     "added_at",
     "pdf_hosts",
     "pdf_sha256",
@@ -726,6 +727,7 @@ def scan_pdfs(dry_run: bool = False) -> list:
             "my_keywords": prev.get("my_keywords", auto_tags),
             "star": prev.get("star", ""),
             "unread": prev.get("unread", ""),
+            "annotated": prev.get("annotated", ""),
             "added_at": prev.get("added_at", datetime.now(timezone.utc).strftime("%Y-%m-%d")),
             "pdf_hosts": add_pdf_host(prev.get("pdf_hosts", ""), socket.gethostname()),
             "pdf_sha256": sha256_file(new_path),
@@ -1132,6 +1134,7 @@ def validate_metadata(rows: list, require_pdfs: bool = False) -> int:
     bad_publication_dates = []
     bad_dois = []
     bad_unread = []
+    bad_annotated = []
     bad_added_dates = []
     bad_viewed_dates = []
     missing_files = []
@@ -1165,6 +1168,10 @@ def validate_metadata(rows: list, require_pdfs: bool = False) -> int:
         unread = (row.get("unread") or "").strip()
         if unread and unread != "1":
             bad_unread.append((row, unread))
+
+        annotated = (row.get("annotated") or "").strip()
+        if annotated and annotated != "1":
+            bad_annotated.append((row, annotated))
 
         added_at = (row.get("added_at") or "").strip()
         if added_at and parse_ymd_date(added_at) is None:
@@ -1205,6 +1212,11 @@ def validate_metadata(rows: list, require_pdfs: bool = False) -> int:
         print(f"Bad unread format: {len(bad_unread)}")
         for row, unread in bad_unread[:20]:
             print(f"  - {row.get('code', '')} :: {unread}")
+    if bad_annotated:
+        issues += 1
+        print(f"Bad annotated format: {len(bad_annotated)}")
+        for row, annotated in bad_annotated[:20]:
+            print(f"  - {row.get('code', '')} :: {annotated}")
     if bad_added_dates:
         issues += 1
         print(f"Bad added_at format: {len(bad_added_dates)}")

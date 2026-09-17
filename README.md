@@ -126,6 +126,9 @@ python3 CODE/bib.py mark-pdf-host --host COMPUTER-NAME --all
   abstract text, added-at date range, and read-date range.
 - Sorting by `added_at` or publication date (`year`), ascending or descending, plus random discovery order.
 - `star` and `unread` toggles persisted to `METADATA/metadata.csv`.
+- An `annotated` status records PDFs with highlights, comments, ink, or text notes. Structured
+  PDF annotations are detected conservatively during PDF inspection/attachment; flattened
+  markings still require the manual toggle.
 - Local, Remote, and Not added badges and filtering. Local availability is checked live;
   Remote means another computer is recorded in `pdf_hosts`, while Not added means no PDF
   has been recorded anywhere yet.
