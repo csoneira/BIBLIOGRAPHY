@@ -49,6 +49,24 @@ async function postJson(url, payload) {
   return data;
 }
 
+async function attachPdf(code, file) {
+  const response = await fetch(`/attach-pdf?code=${encodeURIComponent(code)}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/pdf" },
+    body: file,
+    cache: "no-store",
+  });
+  if (!response.ok) {
+    const messages = {
+      400: "The selected file is not a valid PDF.",
+      409: "A PDF for this entry is already stored on this computer.",
+      413: "The PDF is empty or larger than 250 MB.",
+    };
+    throw new Error(messages[response.status] || `PDF attachment failed (${response.status}).`);
+  }
+  return response.json();
+}
+
 function catalogTypes(rows) {
   return [...new Set(rows.map((row) => (row.type || "").trim()).filter(Boolean))]
     .sort((a, b) => a.localeCompare(b));
@@ -139,8 +157,8 @@ function resetForm(clearUrl = true) {
   form.dataset.mode = "create";
   form.dataset.legacyYear = "";
   document.getElementById("entryCode").value = "";
-  document.getElementById("entryFormTitle").textContent = "Create a metadata-only entry";
-  document.getElementById("createEntryBtn").textContent = "Create entry";
+  document.getElementById("entryFormTitle").textContent = "Add bibliography entry";
+  document.getElementById("createEntryBtn").textContent = "Add entry";
   document.getElementById("cancelEditBtn").hidden = true;
   document.getElementById("entryPdfHostsContainer").hidden = true;
   document.getElementById("entryStatus").textContent = "";
@@ -411,7 +429,7 @@ async function init() {
       }
     });
 
-    document.getElementById("lookupBtn").addEventListener("click", async () => {
+    const lookupEntry = async () => {
       const identifier = document.getElementById("entryLookup").value.trim();
       const status = document.getElementById("entryStatus");
       if (!identifier) { alert("Enter a DOI or arXiv identifier first."); return; }
@@ -433,6 +451,12 @@ async function init() {
         updateNewTypeVisibility();
         status.textContent = `Filled from ${item.source}`;
       } catch (error) { status.textContent = "Lookup failed"; alert(error.message); }
+    };
+    document.getElementById("lookupBtn").addEventListener("click", lookupEntry);
+    document.getElementById("entryLookup").addEventListener("keydown", (event) => {
+      if (event.key !== "Enter") return;
+      event.preventDefault();
+      lookupEntry();
     });
 
     document.getElementById("entryForm").addEventListener("submit", async (event) => {
@@ -443,6 +467,7 @@ async function init() {
       const month = document.getElementById("entryPublicationMonth").value;
       const day = document.getElementById("entryPublicationDay").value;
       const selectedType = document.getElementById("entryType").value;
+      const pdfFile = document.getElementById("entryPdf").files[0];
       const payload = {
         code: document.getElementById("entryCode").value,
         title: document.getElementById("entryTitle").value,
@@ -463,8 +488,8 @@ async function init() {
       button.disabled = true;
       status.textContent = "Saving…";
       const editing = form.dataset.mode === "edit";
+      let saved = null;
       try {
-        let saved;
         try {
           saved = await postJson(editing ? "/update-entry" : "/create-entry", payload);
         } catch (error) {
@@ -478,11 +503,27 @@ async function init() {
           payload.allow_duplicate = true;
           saved = await postJson(editing ? "/update-entry" : "/create-entry", payload);
         }
-        status.textContent = `${editing ? "Updated" : "Created"} ${saved.code}`;
+        if (pdfFile) {
+          status.textContent = `Saved ${saved.code}; adding PDF…`;
+          await attachPdf(saved.code, pdfFile);
+        }
+        status.textContent = `${editing ? "Updated" : "Created"} ${saved.code}${pdfFile ? " with a local PDF" : ""}`;
         window.setTimeout(() => { location.href = `manage.html?edit=${encodeURIComponent(saved.code)}`; }, 500);
       } catch (error) {
-        status.textContent = "Save failed";
-        alert(error.message);
+        if (saved && pdfFile) {
+          status.textContent = `Saved ${saved.code}, but the PDF was not attached`;
+          form.dataset.mode = "edit";
+          document.getElementById("entryCode").value = saved.code;
+          document.getElementById("entryFormTitle").textContent = `Edit: ${saved.title || saved.code}`;
+          document.getElementById("createEntryBtn").textContent = "Save changes";
+          document.getElementById("cancelEditBtn").hidden = false;
+          document.getElementById("entryPdfHostsContainer").hidden = false;
+          history.replaceState({}, "", `manage.html?edit=${encodeURIComponent(saved.code)}`);
+          alert(`The bibliography entry was saved, but the PDF was not attached. You can correct the file selection and try again.\n\n${error.message}`);
+        } else {
+          status.textContent = "Save failed";
+          alert(error.message);
+        }
         button.disabled = false;
       }
     });

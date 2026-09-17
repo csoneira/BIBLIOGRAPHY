@@ -146,7 +146,8 @@ python3 CODE/bib.py mark-pdf-host --host COMPUTER-NAME --all
 - Per-entry citation copying and bulk downloads in formatted citation, BibTeX, and RIS formats.
 - SHA-256 PDF auditing detects changed files and byte-identical duplicates.
 - Per-paper notes editor persisted to `METADATA/metadata.csv` (`notes` column).
-- A metadata-only entry form for printed papers or references without a local PDF.
+- An entry form that can fill editable metadata from a DOI or arXiv identifier and optionally
+  copy an uploaded PDF into `PDFs/`; it also supports metadata-only printed references.
   Its publication month is optional, an exact day can be included when known, and
   document types come from the catalog with an option to add a new type.
 - Catalog-management tools (create/edit entries, merge duplicates, and manage types)

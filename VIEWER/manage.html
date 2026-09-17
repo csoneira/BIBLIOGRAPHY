@@ -25,7 +25,9 @@
       .wide { grid-column:1/-1; }
       label { display:block; margin-bottom:6px; color:var(--muted); font-size:13px; }
       input, select, textarea { width:100%; padding:10px 12px; border:1px solid #d6d6d6; border-radius:10px; background:#fff; font:inherit; }
+      input[type="file"] { padding:8px 10px; }
       textarea { min-height:90px; resize:vertical; }
+      .field-help { margin:6px 0 0; color:var(--muted); font-size:12px; }
       .inline { display:flex; gap:8px; }
       .inline input { flex:1; }
       .actions { display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin-top:16px; }
@@ -141,16 +143,17 @@
       </details>
 
       <details class="panel" id="entryPanel">
-        <summary id="entryFormTitle">Create a metadata-only entry</summary>
+        <summary id="entryFormTitle">Add bibliography entry</summary>
         <form id="entryForm">
           <input id="entryCode" type="hidden" />
           <div class="grid">
             <div class="wide">
-              <label for="entryLookup">Fill from DOI or arXiv</label>
+              <label for="entryLookup">DOI or arXiv identifier</label>
               <div class="inline">
-                <input id="entryLookup" type="text" placeholder="10.xxxx/... or arXiv:2401.12345" />
-                <button class="secondary" id="lookupBtn" type="button">Look up</button>
+                <input id="entryLookup" type="text" placeholder="10.xxxx/... or arXiv:2401.12345" autocomplete="off" />
+                <button class="secondary" id="lookupBtn" type="button">Fill fields</button>
               </div>
+              <p class="field-help">Enter an identifier and fill the form automatically. Check or edit the publisher's metadata before saving.</p>
             </div>
             <div><label for="entryTitle">Title *</label><input id="entryTitle" required /></div>
             <div><label for="entryPublicationMonth">Publication month</label><input id="entryPublicationMonth" type="month" /></div>
@@ -163,6 +166,11 @@
             <div><label for="entryKeywords">Keywords</label><input id="entryKeywords" /></div>
             <div><label for="entryMyKeywords">My keywords</label><input id="entryMyKeywords" /></div>
             <div id="entryPdfHostsContainer" hidden><label for="entryPdfHosts">PDF computers</label><input id="entryPdfHosts" placeholder="naranjito; manzanita" /></div>
+            <div class="wide">
+              <label for="entryPdf">PDF file (optional)</label>
+              <input id="entryPdf" type="file" accept="application/pdf,.pdf" />
+              <p class="field-help">The file will be copied into PDFs, checked, and marked Local on this computer.</p>
+            </div>
             <div class="wide"><label for="entryAbstract">Abstract</label><textarea id="entryAbstract"></textarea></div>
             <div class="wide"><label for="entryNotes">Notes</label><textarea id="entryNotes"></textarea></div>
           </div>
@@ -171,7 +179,7 @@
               <label><input id="entryUnread" type="checkbox" checked /> Unread</label>
               <label><input id="entryStar" type="checkbox" /> Starred</label>
             </div>
-            <button class="primary" id="createEntryBtn" type="submit">Create entry</button>
+            <button class="primary" id="createEntryBtn" type="submit">Add entry</button>
             <button class="secondary" id="cancelEditBtn" type="button" hidden>Cancel edit</button>
             <span class="status" id="entryStatus"></span>
           </div>
