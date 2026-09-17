@@ -265,6 +265,8 @@ function sortRows(rows, sortMode) {
   return rows;
 }
 
+const DEFAULT_SORT_MODE = "added_desc";
+
 function renderResults(rows) {
   updateResultSummary(rows);
   const container = document.getElementById("results");
@@ -983,7 +985,9 @@ function setFilters(filters = {}) {
   document.getElementById("addedTo").value = filters.addedTo || "";
   document.getElementById("readFrom").value = filters.readFrom || "";
   document.getElementById("readTo").value = filters.readTo || "";
-  document.getElementById("addedSort").value = filters.addedSort || "";
+  const savedSort = filters.addedSort === "desc" ? "added_desc"
+    : filters.addedSort === "asc" ? "added_asc" : filters.addedSort;
+  document.getElementById("addedSort").value = savedSort || DEFAULT_SORT_MODE;
 }
 
 function freshUrl(url) {
@@ -1093,10 +1097,10 @@ async function init() {
     const rows = await loadData();
     fullCatalogRows = rows;
     const savedFilters = await loadSavedFilters();
-    let filteredRows = rows;
+    let filteredRows = sortRows(rows, DEFAULT_SORT_MODE);
     setupFilterTypeOptions(rows);
     updateDashboard(rows);
-    renderResults(rows);
+    renderResults(filteredRows);
 
     document.getElementById("applyBtn").addEventListener("click", () => {
       const filters = getFilters();
@@ -1109,8 +1113,8 @@ async function init() {
       setFilters();
       document.getElementById("savedList").value = "";
       document.getElementById("savedFilterStatus").textContent = "";
-      filteredRows = rows;
-      renderResults(rows);
+      filteredRows = sortRows(rows, DEFAULT_SORT_MODE);
+      renderResults(filteredRows);
     });
 
     document.getElementById("loadListBtn").addEventListener("click", () => {
