@@ -30,9 +30,10 @@
       textarea { min-height:90px; resize:vertical; }
       .field-help { margin:6px 0 0; color:var(--muted); font-size:12px; }
       .import-workspace { margin-top:16px; padding:16px; border:1px solid #d9d5d0; border-radius:12px; background:rgba(255,255,255,.6); }
-      .import-step + .import-step { margin-top:14px; }
+      .import-step + .import-step { margin-top:18px; padding-top:18px; border-top:1px solid rgba(30,79,122,.22); }
       .import-step textarea { min-height:76px; }
-      .draft-nav { display:flex; align-items:center; justify-content:center; gap:12px; margin:18px 0 4px; }
+      .draft-footer { margin-top:20px; padding-top:16px; border-top:1px solid rgba(30,79,122,.22); }
+      .draft-nav { display:flex; align-items:center; justify-content:center; gap:12px; margin:8px 0 0; }
       .draft-nav strong { min-width:90px; text-align:center; color:var(--accent); }
       .draft-source { color:var(--muted); font-size:12px; text-align:center; }
       .inline { display:flex; gap:8px; }
@@ -111,13 +112,6 @@
               </div>
               <p class="field-help">PDF scanning fills only empty fields. Every draft remains unsaved until you confirm it below.</p>
             </div>
-            <div class="draft-nav" id="draftNavigation">
-              <button class="secondary" id="previousDraftBtn" type="button">← Previous</button>
-              <strong id="draftCounter">1 / 1</strong>
-              <button class="secondary" id="nextDraftBtn" type="button">Next →</button>
-              <button class="danger" id="discardDraftBtn" type="button">Discard draft</button>
-            </div>
-            <div class="draft-source" id="draftSource">Manual draft</div>
           </div>
           <div class="grid">
             <div><label for="entryTitle">Title *</label><input id="entryTitle" required /></div>
@@ -146,6 +140,15 @@
             <button class="primary" id="createEntryBtn" type="submit">Add entry</button>
             <button class="secondary" id="cancelEditBtn" type="button" hidden>Cancel edit</button>
             <span class="status" id="entryStatus"></span>
+          </div>
+          <div class="draft-footer" id="draftNavigation">
+            <div class="draft-source" id="draftSource">Manual draft</div>
+            <div class="draft-nav">
+              <button class="secondary" id="previousDraftBtn" type="button">← Previous</button>
+              <strong id="draftCounter">1 / 1</strong>
+              <button class="secondary" id="nextDraftBtn" type="button">Next →</button>
+              <button class="danger" id="discardDraftBtn" type="button">Discard draft</button>
+            </div>
           </div>
         </form>
       </details>
