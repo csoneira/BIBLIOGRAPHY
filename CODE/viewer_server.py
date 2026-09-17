@@ -10,6 +10,7 @@ import socket
 import subprocess
 import tempfile
 import threading
+import unicodedata
 import xml.etree.ElementTree as ET
 from datetime import date, datetime, timezone
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
@@ -260,13 +261,14 @@ def duplicate_matches(rows: list, title: str, doi: str, exclude_code: str = "") 
 
 
 def slugify(value: str, max_len: int = 60) -> str:
+    value = unicodedata.normalize("NFKD", value).encode("ascii", "ignore").decode("ascii")
     value = re.sub(r"[^a-z0-9]+", "_", value.strip().lower())
     value = re.sub(r"_+", "_", value).strip("_")
     return (value or "untitled")[:max_len].rstrip("_")
 
 
 def create_metadata_entry(payload: dict) -> dict:
-    title = str(payload.get("title") or "").strip()
+    title = _clean_citation_value(payload.get("title", ""))
     publication_date = str(payload.get("publication_date") or "").strip()
     doc_type = slugify(str(payload.get("type") or "article"), max_len=20)
 
@@ -305,11 +307,11 @@ def create_metadata_entry(payload: dict) -> dict:
             "code": code,
             "type": doc_type,
             "title": title,
-            "journal": str(payload.get("journal") or "").strip(),
+            "journal": _clean_citation_value(payload.get("journal", "")),
             "year": year,
             "publication_date": publication_date,
             "doi": doi,
-            "author": str(payload.get("author") or "").strip(),
+            "author": _clean_citation_value(payload.get("author", "")),
             "keywords": str(payload.get("keywords") or "").strip(),
             "my_keywords": str(payload.get("my_keywords") or "").strip(),
             "star": "1" if payload.get("star") in (True, "1", 1) else "",
@@ -343,7 +345,7 @@ def validate_publication_date(value: str) -> str:
 
 def update_metadata_entry(payload: dict) -> dict:
     code = str(payload.get("code") or "").strip()
-    title = str(payload.get("title") or "").strip()
+    title = _clean_citation_value(payload.get("title", ""))
     publication_date = validate_publication_date(payload.get("publication_date"))
     doc_type = slugify(str(payload.get("type") or "article"), max_len=20)
     if not code:
@@ -364,11 +366,11 @@ def update_metadata_entry(payload: dict) -> dict:
             {
                 "type": doc_type,
                 "title": title,
-                "journal": str(payload.get("journal") or "").strip(),
+                "journal": _clean_citation_value(payload.get("journal", "")),
                 "year": publication_date[:4] if publication_date else str(payload.get("year") or "").strip(),
                 "publication_date": publication_date,
                 "doi": str(payload.get("doi") or "").strip(),
-                "author": str(payload.get("author") or "").strip(),
+                "author": _clean_citation_value(payload.get("author", "")),
                 "keywords": str(payload.get("keywords") or "").strip(),
                 "my_keywords": str(payload.get("my_keywords") or "").strip(),
                 "star": "1" if payload.get("star") in (True, "1", 1) else "",
@@ -600,11 +602,38 @@ def lookup_reference(identifier: str) -> dict:
         return parse_crossref_message(json.loads(response.read().decode("utf-8"))["message"])
 
 
+def decode_latex_text(value: str) -> str:
+    accent_marks = {
+        "'": "\u0301", "`": "\u0300", "^": "\u0302", '"': "\u0308",
+        "~": "\u0303", "=": "\u0304", ".": "\u0307", "u": "\u0306",
+        "v": "\u030c", "H": "\u030b", "c": "\u0327", "k": "\u0328",
+        "r": "\u030a", "b": "\u0331", "d": "\u0323",
+    }
+    special_letters = {
+        "aa": "å", "AA": "Å", "ae": "æ", "AE": "Æ", "oe": "œ", "OE": "Œ",
+        "o": "ø", "O": "Ø", "l": "ł", "L": "Ł", "ss": "ß",
+    }
+    value = re.sub(r"\\([ij])\b", r"\1", value)
+
+    def replace_accent(match):
+        return unicodedata.normalize("NFC", match.group(2) + accent_marks[match.group(1)])
+
+    value = re.sub(r"\\(['`^\"~=\.uvHckrbd])\s*\{?([A-Za-z])\}?", replace_accent, value)
+    value = re.sub(
+        r"\\(aa|AA|ae|AE|oe|OE|ss|[oOlL])\b",
+        lambda match: special_letters[match.group(1)],
+        value,
+    )
+    value = re.sub(r"\\([&%_#$])", r"\1", value)
+    return value
+
+
 def _clean_citation_value(value: str) -> str:
     value = str(value or "").strip()
     while len(value) >= 2 and ((value[0], value[-1]) in {("{", "}"), ('"', '"')}):
         value = value[1:-1].strip()
     value = value.replace("{", "").replace("}", "")
+    value = decode_latex_text(value)
     return re.sub(r"\s+", " ", value).strip()
 
 

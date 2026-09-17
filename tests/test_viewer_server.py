@@ -72,6 +72,23 @@ class TestCreateMetadataEntry(unittest.TestCase):
             self.assertEqual(row["publication_date"], "")
             self.assertEqual(row["year"], "")
 
+    def test_normalizes_latex_accents_before_saving(self):
+        repo_root = Path(__file__).resolve().parents[1]
+        server = load_server(repo_root / "CODE" / "viewer_server.py")
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            server.METADATA_FILE = Path(tmp_dir) / "METADATA" / "metadata.csv"
+            row = server.create_metadata_entry(
+                {
+                    "title": r"Regulamento de matr\'icula",
+                    "author": r"Jos\'e Garc\'ia",
+                    "type": "book",
+                }
+            )
+            self.assertEqual(row["title"], "Regulamento de matrícula")
+            self.assertEqual(row["author"], "José García")
+            self.assertEqual(row["code"], "undated_book_regulamento_de_matricula")
+
     def test_duplicate_detection_editing_locations_and_types(self):
         repo_root = Path(__file__).resolve().parents[1]
         server = load_server(repo_root / "CODE" / "viewer_server.py")
@@ -283,6 +300,14 @@ class TestCreateMetadataEntry(unittest.TestCase):
         self.assertEqual(bibtex[0]["author"], "Ada A; Bob B")
         self.assertEqual(bibtex[0]["abstract"], "Citation-only abstract")
         self.assertEqual(bibtex[1]["type"], "book")
+
+        accents = server.parse_citation_records(
+            r"""@book{accented,
+            title={Regulamento de matr\'icula e informa\c{c}\~ao},
+            author={Jos\'e Garc\'ia and Fran\c{c}ois M\"uller}}"""
+        )[0]
+        self.assertEqual(accents["title"], "Regulamento de matrícula e informação")
+        self.assertEqual(accents["author"], "José García; François Müller")
 
         ris = server.parse_citation_records(
             """TY  - JOUR
