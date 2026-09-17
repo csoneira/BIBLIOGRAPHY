@@ -177,6 +177,7 @@
 
       .text-filters,
       .journal-filter-row,
+      .category-filters,
       .final-filters {
         grid-column: 1 / -1;
         display: grid;
@@ -190,6 +191,11 @@
 
       .final-filters {
         grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+
+      .category-filters {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        align-items: start;
       }
 
       .saved-filter-bar {
@@ -627,6 +633,7 @@
         }
         .text-filters,
         .journal-filter-row,
+        .category-filters,
         .final-filters {
           grid-template-columns: 1fr;
         }
@@ -706,15 +713,17 @@
             <input id="journal" type="text" placeholder="Nature, NIM A" />
           </div>
         </div>
-        <div class="type-filter">
-          <label>Types</label>
-          <div class="type-options" id="typeFilterOptions" aria-label="Filter by document types"></div>
-        </div>
-        <div>
-          <label>Status</label>
-          <div class="status-options">
-            <label><input id="starOnly" type="checkbox" /> Starred</label>
-            <label><input id="unreadOnly" type="checkbox" /> Unread</label>
+        <div class="category-filters">
+          <div class="type-filter">
+            <label>Types</label>
+            <div class="type-options" id="typeFilterOptions" aria-label="Filter by document types"></div>
+          </div>
+          <div>
+            <label>Status</label>
+            <div class="status-options">
+              <label><input id="starOnly" type="checkbox" /> Starred</label>
+              <label><input id="unreadOnly" type="checkbox" /> Unread</label>
+            </div>
           </div>
         </div>
         <div class="final-filters">
