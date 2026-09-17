@@ -168,10 +168,21 @@ function startDraftQueue() {
   renderDraft();
 }
 
+function publicationDatePrecision(value) {
+  const match = String(value || "").trim().match(/^\d{4}(?:-(\d{2})(?:-(\d{2}))?)?$/);
+  if (!match) return 0;
+  if (match[2]) return 3;
+  if (match[1]) return 2;
+  return 1;
+}
+
 function mergeDraft(draft, values, overwrite = false) {
   ["title", "publication_date", "type", "author", "journal", "doi", "keywords", "abstract"].forEach((field) => {
     const value = String(values[field] || "").trim();
-    if (value && (overwrite || !String(draft[field] || "").trim())) draft[field] = value;
+    const current = String(draft[field] || "").trim();
+    const losesDateDetail = field === "publication_date" && values.source === "Crossref"
+      && publicationDatePrecision(value) < publicationDatePrecision(current);
+    if (value && !losesDateDetail && (overwrite || !current)) draft[field] = value;
   });
   if (values.source && !draft.sources.includes(values.source)) draft.sources.push(values.source);
   if (values.annotated) draft.annotated = true;
