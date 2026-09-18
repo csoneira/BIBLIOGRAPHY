@@ -59,6 +59,12 @@
       .history-state { flex:none; padding:4px 8px; border-radius:999px; background:#e3f0e7; color:#28633c; font-size:12px; }
       .history-state.undone { background:#e5e8ea; color:#687177; }
       .history-empty { margin-top:16px; color:var(--muted); }
+      .checkpoint-state { display:flex; gap:10px; align-items:center; flex-wrap:wrap; margin-top:14px; }
+      .checkpoint-badge { padding:5px 10px; border-radius:999px; background:#f8e4bb; color:#744f08; font-size:13px; font-weight:600; }
+      .checkpoint-badge.clean { background:#e3f0e7; color:#28633c; }
+      .checkpoint-files { margin:12px 0 0; padding-left:22px; color:var(--muted); }
+      .checkpoint-commands { margin:14px 0 0; padding:12px; overflow:auto; border-radius:10px; background:#20272c; color:#edf2f4; font:13px/1.55 monospace; white-space:pre-wrap; }
+      .validation-output { margin-top:12px; padding:10px 12px; border-radius:10px; background:#fff; border:1px solid #e2ded9; color:var(--muted); white-space:pre-wrap; font:12px/1.45 monospace; }
       .wallpaper-options { display:grid; grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); gap:14px; margin-top:16px; }
       .wallpaper-option { margin:0; padding:10px; border:1px solid #d6d6d6; border-radius:12px; background:#fff; color:var(--ink); cursor:pointer; }
       .wallpaper-option:has(input:checked) { border-color:var(--accent); box-shadow:0 0 0 2px rgba(30,79,122,.18); }
@@ -121,15 +127,16 @@
           <div class="grid">
             <div class="field-section-heading">Bibliographic metadata</div>
             <div><label for="entryTitle">Title *</label><input id="entryTitle" required /></div>
-            <div><label for="entryPublicationDate">Publication date</label><input id="entryPublicationDate" type="text" inputmode="numeric" pattern="\d{4}-(0[1-9]|1[0-2])(?:-(0[1-9]|[12]\d|3[01]))?" placeholder="YYYY-MM or YYYY-MM-DD" /></div>
+            <div><label for="entryPublicationDate">Publication date</label><input id="entryPublicationDate" type="text" inputmode="numeric" pattern="\d{4}(?:-(0[1-9]|1[0-2])(?:-(0[1-9]|[12]\d|3[01]))?)?" placeholder="YYYY, YYYY-MM, or YYYY-MM-DD" /></div>
             <div><label for="entryAuthor">Author(s)</label><input id="entryAuthor" /></div>
             <div><label for="entryJournal">Journal</label><input id="entryJournal" /></div>
             <div><label for="entryDoi">DOI</label><input id="entryDoi" placeholder="10.xxxx/..." /></div>
             <div><label for="entryKeywords">Keywords</label><input id="entryKeywords" /></div>
             <div id="entryPdfHostsContainer" hidden><label for="entryPdfHosts">PDF computers</label><input id="entryPdfHosts" placeholder="naranjito; manzanita" /></div>
             <div class="wide" id="editPdfContainer" hidden>
-              <label for="editPdf">Attach a PDF (optional)</label>
+              <label for="editPdf">Attach or replace the local PDF (optional)</label>
               <input id="editPdf" type="file" accept="application/pdf,.pdf" />
+              <p class="field-help">Replacing is recoverable from Change history and automatically rechecks annotation status.</p>
             </div>
             <div class="wide"><label for="entryAbstract">Abstract</label><textarea id="entryAbstract"></textarea></div>
             <div class="field-section-heading">My library fields</div>
@@ -167,6 +174,7 @@
             <span class="status" id="entryStatus"></span>
           </div>
           <div class="draft-footer" id="draftNavigation">
+            <p class="field-help" id="draftPersistenceStatus">Drafts are saved automatically in this browser.</p>
             <div class="draft-nav">
               <button class="secondary" id="previousDraftBtn" type="button">← Previous</button>
               <strong id="draftCounter">1 / 1</strong>
@@ -176,6 +184,24 @@
           </div>
         </form>
       </details>
+
+      <section class="panel" aria-labelledby="checkpointTitle">
+        <h2 id="checkpointTitle">Library checkpoint</h2>
+        <p>Review pending catalog changes, validate them, and make a recoverable backup before committing.</p>
+        <div class="checkpoint-state">
+          <span class="checkpoint-badge" id="checkpointBadge">Checking…</span>
+          <span class="status" id="checkpointSync"></span>
+        </div>
+        <ul class="checkpoint-files" id="checkpointFiles"></ul>
+        <pre class="checkpoint-commands" id="checkpointCommands"></pre>
+        <div class="actions">
+          <button class="primary" id="validateLibraryBtn" type="button">Validate library</button>
+          <button class="secondary" id="checkpointLibraryBtn" type="button">Create backup checkpoint</button>
+          <button class="secondary" id="refreshCheckpointBtn" type="button">Refresh status</button>
+          <span class="status" id="checkpointStatus"></span>
+        </div>
+        <div class="validation-output" id="validationOutput" hidden></div>
+      </section>
 
       <section class="panel" aria-labelledby="maintenanceTitle">
         <h2 id="maintenanceTitle">Maintenance</h2>

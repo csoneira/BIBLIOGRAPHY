@@ -12,7 +12,7 @@
 ## General repo improvements
 
 - [x] Make the launcher track and restart stale `viewer_server.py` processes cleanly.
-- [ ] Add `python3 CODE/bib.py migrate-metadata` to safely add new columns (like `unread`) without manual CSV edits.
+- [x] Add `python3 CODE/bib.py migrate-metadata` to safely add new columns without manual CSV edits, and run the same guard automatically in the viewer.
 - [ ] Add direct HTTP tests for viewer server write/open endpoints (`/toggle-star`, `/toggle-unread`, `/save-notes`, `/open-pdf`) so route guards are covered.
 - [x] When loading a saved list in the viewer, re-apply and show its stored filters.
 - [x] Add a simple `scripts/verify.sh` check to ensure metadata header order matches `bib.py` fields before committing.

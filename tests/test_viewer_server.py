@@ -74,6 +74,49 @@ class TestCreateMetadataEntry(unittest.TestCase):
             self.assertEqual(row["publication_date"], "")
             self.assertEqual(row["year"], "")
 
+    def test_allows_year_only_publication_date(self):
+        repo_root = Path(__file__).resolve().parents[1]
+        server = load_server(repo_root / "CODE" / "viewer_server.py")
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            server.METADATA_FILE = Path(tmp_dir) / "METADATA" / "metadata.csv"
+            row = server.create_metadata_entry(
+                {"title": "Year-only Crossref Paper", "publication_date": "2024"}
+            )
+            self.assertEqual(row["publication_date"], "2024")
+            self.assertEqual(row["year"], "2024")
+
+    def test_migrates_missing_metadata_columns_without_losing_values(self):
+        repo_root = Path(__file__).resolve().parents[1]
+        server = load_server(repo_root / "CODE" / "viewer_server.py")
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            root = Path(tmp_dir)
+            server.METADATA_FILE = root / "METADATA" / "metadata.csv"
+            server.METADATA_FILE.parent.mkdir(parents=True)
+            server.METADATA_FILE.write_text(
+                "code,type,title\nold,article,Preserved title\n", encoding="utf-8"
+            )
+            rows = server.load_metadata_rows()
+            self.assertEqual(rows[0]["title"], "Preserved title")
+            self.assertEqual(rows[0]["annotated"], "")
+            with server.METADATA_FILE.open(newline="", encoding="utf-8") as handle:
+                self.assertEqual(next(csv.reader(handle)), server.METADATA_FIELDS)
+            backups = root / "METADATA" / "backups" / "schema_migrations"
+            self.assertEqual(len(list(backups.glob("metadata-before-*.csv"))), 1)
+
+    def test_refuses_unknown_metadata_columns(self):
+        repo_root = Path(__file__).resolve().parents[1]
+        server = load_server(repo_root / "CODE" / "viewer_server.py")
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            server.METADATA_FILE = Path(tmp_dir) / "metadata.csv"
+            server.METADATA_FILE.write_text(
+                "code,type,title,future_field\none,article,One,keep me\n", encoding="utf-8"
+            )
+            with self.assertRaises(RuntimeError):
+                server.load_metadata_rows()
+
     def test_normalizes_latex_accents_before_saving(self):
         repo_root = Path(__file__).resolve().parents[1]
         server = load_server(repo_root / "CODE" / "viewer_server.py")
@@ -118,6 +161,20 @@ class TestCreateMetadataEntry(unittest.TestCase):
             self.assertEqual(server.manage_type("merge", "report", "article"), 1)
             rows = server.load_metadata_rows()
             self.assertEqual(rows[0]["type"], "article")
+
+    def test_general_edit_does_not_erase_annotated_status(self):
+        repo_root = Path(__file__).resolve().parents[1]
+        server = load_server(repo_root / "CODE" / "viewer_server.py")
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            server.METADATA_FILE = Path(tmp_dir) / "METADATA" / "metadata.csv"
+            row = server.create_metadata_entry(
+                {"title": "Annotated paper", "type": "article", "annotated": True}
+            )
+            updated = server.update_metadata_entry(
+                {**row, "title": "Corrected annotated paper", "annotated": False}
+            )
+            self.assertEqual(updated["annotated"], "1")
 
     def test_manage_my_keywords_renames_merges_and_deletes(self):
         repo_root = Path(__file__).resolve().parents[1]
@@ -194,6 +251,29 @@ class TestCreateMetadataEntry(unittest.TestCase):
             history = server.change_history()
             self.assertEqual(history[0]["status"], "undone")
             self.assertFalse(history[0]["undoable"])
+
+    def test_library_checkpoint_copies_catalog_files(self):
+        repo_root = Path(__file__).resolve().parents[1]
+        server = load_server(repo_root / "CODE" / "viewer_server.py")
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            root = Path(tmp_dir)
+            server.ROOT = root
+            server.METADATA_FILE = root / "METADATA" / "metadata.csv"
+            server.ABSTRACTS_FILE = root / "METADATA" / "abstracts.csv"
+            server.SAVED_LISTS_DIR = root / "SAVED_LISTS"
+            server.CHECKPOINT_BACKUP_DIR = root / "METADATA" / "backups" / "checkpoints"
+            server.create_metadata_entry({"title": "Checkpoint paper", "type": "article"})
+            server.ABSTRACTS_FILE.write_text("code,abstract\n", encoding="utf-8")
+            server.SAVED_LISTS_DIR.mkdir()
+            (server.SAVED_LISTS_DIR / "Mine.json").write_text("{}\n", encoding="utf-8")
+
+            result = server.create_library_checkpoint()
+            checkpoint = root / result["path"]
+            self.assertTrue((checkpoint / "METADATA" / "metadata.csv").exists())
+            self.assertTrue((checkpoint / "METADATA" / "abstracts.csv").exists())
+            self.assertTrue((checkpoint / "SAVED_LISTS" / "Mine.json").exists())
+            self.assertTrue((checkpoint / "manifest.json").exists())
 
     def test_change_history_keeps_only_ten_movements(self):
         repo_root = Path(__file__).resolve().parents[1]
@@ -313,6 +393,45 @@ class TestCreateMetadataEntry(unittest.TestCase):
             with annotated.open("wb") as handle:
                 writer.write(handle)
             self.assertTrue(server.pdf_has_annotations(annotated))
+
+    def test_rechecks_replaced_pdf_and_promotes_annotated_status(self):
+        repo_root = Path(__file__).resolve().parents[1]
+        server = load_server(repo_root / "CODE" / "viewer_server.py")
+        try:
+            from PyPDF2 import PdfWriter
+        except ImportError:
+            self.skipTest("PyPDF2 is not installed")
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            root = Path(tmp_dir)
+            (root / "PDFs").mkdir()
+            server.ROOT = root
+            server.METADATA_FILE = root / "METADATA" / "metadata.csv"
+            server.ABSTRACTS_FILE = root / "METADATA" / "abstracts.csv"
+            server.SAVED_LISTS_DIR = root / "SAVED_LISTS"
+            server.CHANGE_BACKUP_DIR = root / "METADATA" / "backups" / "viewer_changes"
+            server._ANNOTATION_SCAN_CACHE = {}
+            row = server.create_metadata_entry({"title": "Replace me", "type": "article"})
+            pdf = root / "PDFs" / f"{row['code']}.pdf"
+
+            writer = PdfWriter()
+            writer.add_blank_page(100, 100)
+            with pdf.open("wb") as handle:
+                writer.write(handle)
+            first = server.reconcile_local_pdf_annotations()
+            self.assertEqual(first["updated"], 0)
+
+            writer = PdfWriter()
+            writer.add_blank_page(100, 100)
+            writer.add_annotation(0, {
+                "/Type": "/Annot", "/Subtype": "/Highlight", "/Rect": [0, 0, 10, 10],
+                "/Contents": "new highlight",
+            })
+            with pdf.open("wb") as handle:
+                writer.write(handle)
+            second = server.reconcile_local_pdf_annotations()
+            self.assertEqual(second["updated"], 1)
+            self.assertEqual(server.load_metadata_rows()[0]["annotated"], "1")
 
     def test_parses_multiple_bibtex_and_ris_records(self):
         repo_root = Path(__file__).resolve().parents[1]

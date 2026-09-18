@@ -50,7 +50,7 @@ class TestMetadataSchema(unittest.TestCase):
                 if publication_date:
                     self.assertRegex(
                         publication_date,
-                        r"^\d{4}-(0[1-9]|1[0-2])(?:-(0[1-9]|[12]\d|3[01]))?$",
+                        r"^\d{4}(?:-(0[1-9]|1[0-2])(?:-(0[1-9]|[12]\d|3[01]))?)?$",
                     )
                     if len(publication_date) == 10:
                         date.fromisoformat(publication_date)

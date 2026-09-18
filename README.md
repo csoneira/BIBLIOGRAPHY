@@ -33,6 +33,7 @@ code,abstract
 1. Start the viewer server and open **Add**.
 2. Stage one or more RIS/BibTeX records, DOI/arXiv identifiers, and optional PDFs.
 3. Review each draft page and confirm entries one at a time. Nothing is added before confirmation.
+   The browser preserves the draft queue and selected PDFs across refreshes and server restarts.
 4. If needed, sync codes and filenames from later title corrections:
 
 ```bash
@@ -127,8 +128,9 @@ python3 CODE/bib.py mark-pdf-host --host COMPUTER-NAME --all
 - Sorting by `added_at` or publication date (`year`), ascending or descending, plus random discovery order.
 - `star` and `unread` toggles persisted to `METADATA/metadata.csv`.
 - An `annotated` status records PDFs with highlights, comments, ink, or text notes. Structured
-  PDF annotations are detected conservatively during PDF inspection/attachment; flattened
-  markings still require the manual toggle.
+  PDF annotations are detected conservatively during PDF inspection/attachment and by an
+  automatic local scan every 15 seconds. Replacing a local PDF rechecks it immediately and
+  promotes the status when markup is found; flattened markings still require the manual toggle.
 - Local, Remote, and Not added badges and filtering. Local availability is checked live;
   Remote means another computer is recorded in `pdf_hosts`, while Not added means no PDF
   has been recorded anywhere yet.
@@ -145,10 +147,12 @@ python3 CODE/bib.py mark-pdf-host --host COMPUTER-NAME --all
   DOI metadata enriches matching drafts before each entry is manually confirmed.
 - Per-entry citation copying and bulk downloads in formatted citation, BibTeX, and RIS formats.
 - SHA-256 PDF auditing detects changed files and byte-identical duplicates.
+- Options includes a Library checkpoint panel that shows pending catalog files and Git sync
+  state, validates the catalog, creates a recoverable data backup, and displays commit commands.
 - Per-paper notes editor persisted to `METADATA/metadata.csv` (`notes` column).
 - An entry form that can fill editable metadata from citations, DOI/arXiv identifiers, or a cautious
   PDF scan and optionally copy an uploaded PDF into `PDFs/`; it also supports metadata-only references.
-  Its publication month is optional, an exact day can be included when known, and
+  Its publication month and day are optional (`YYYY`, `YYYY-MM`, or `YYYY-MM-DD`), and
   document types come from the catalog with an option to add a new type.
 - Entry creation and editing live on `VIEWER/add.html`; maintenance tools such as
   duplicate merging and type management live on `VIEWER/manage.html`.
@@ -189,6 +193,16 @@ python3 CODE/bib.py abstracts --from-pdfs --force
 - `added_at` is `YYYY-MM-DD` when present.
 - `star`/`unread` are empty or `1`.
 - `notes` is optional free text.
+
+Metadata schema additions are migrated automatically before the viewer reads or writes the
+catalog. A timestamped pre-migration copy is retained under `METADATA/backups/schema_migrations/`.
+The same migration can be run explicitly with:
+
+```bash
+python3 CODE/bib.py migrate-metadata
+```
+
+Unknown columns cause the writer to stop instead of silently discarding data from a newer schema.
 
 ## Scripts
 

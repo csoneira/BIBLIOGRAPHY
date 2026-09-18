@@ -49,8 +49,9 @@ async function postJson(url, payload) {
   return data;
 }
 
-async function attachPdf(code, file) {
-  const response = await fetch(`/attach-pdf?code=${encodeURIComponent(code)}`, {
+async function attachPdf(code, file, replaceExisting = false) {
+  const replace = replaceExisting ? "&replace=1" : "";
+  const response = await fetch(`/attach-pdf?code=${encodeURIComponent(code)}${replace}`, {
     method: "POST",
     headers: { "Content-Type": "application/pdf" },
     body: file,
@@ -68,8 +69,102 @@ async function attachPdf(code, file) {
 }
 
 const DRAFT_FIELDS = ["title", "author", "journal", "doi", "keywords", "abstract", "notes"];
+const DRAFT_DB_NAME = "bibliography-add-drafts";
+const DRAFT_STORE_NAME = "queues";
 let entryDrafts = [];
 let activeDraftIndex = 0;
+let draftPersistenceTimer = null;
+
+function isAddWorkspace() {
+  return location.pathname.endsWith("/add.html");
+}
+
+function openDraftDatabase() {
+  return new Promise((resolve, reject) => {
+    const request = indexedDB.open(DRAFT_DB_NAME, 1);
+    request.onupgradeneeded = () => {
+      if (!request.result.objectStoreNames.contains(DRAFT_STORE_NAME)) {
+        request.result.createObjectStore(DRAFT_STORE_NAME, { keyPath: "id" });
+      }
+    };
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error);
+  });
+}
+
+async function persistDraftQueue() {
+  if (!isAddWorkspace() || document.getElementById("entryForm")?.dataset.mode === "edit") return;
+  const status = document.getElementById("draftPersistenceStatus");
+  try {
+    const database = await openDraftDatabase();
+    await new Promise((resolve, reject) => {
+      const transaction = database.transaction(DRAFT_STORE_NAME, "readwrite");
+      transaction.objectStore(DRAFT_STORE_NAME).put({
+        id: "current", drafts: entryDrafts, activeDraftIndex, savedAt: new Date().toISOString(),
+      });
+      transaction.oncomplete = resolve;
+      transaction.onerror = () => reject(transaction.error);
+    });
+    database.close();
+    if (status) status.textContent = `Drafts saved automatically · ${new Date().toLocaleTimeString()}`;
+  } catch (error) {
+    if (status) status.textContent = "Draft storage is unavailable; keep this page open.";
+  }
+}
+
+function scheduleDraftPersistence() {
+  if (!isAddWorkspace()) return;
+  window.clearTimeout(draftPersistenceTimer);
+  draftPersistenceTimer = window.setTimeout(() => { persistDraftQueue(); }, 180);
+}
+
+async function restoreDraftQueue() {
+  if (!isAddWorkspace()) return false;
+  try {
+    const database = await openDraftDatabase();
+    const saved = await new Promise((resolve, reject) => {
+      const request = database.transaction(DRAFT_STORE_NAME, "readonly")
+        .objectStore(DRAFT_STORE_NAME).get("current");
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error);
+    });
+    database.close();
+    if (!saved?.drafts?.length) return false;
+    entryDrafts = saved.drafts;
+    activeDraftIndex = Math.min(Number(saved.activeDraftIndex) || 0, entryDrafts.length - 1);
+    renderDraft();
+    const restoredAt = new Date(saved.savedAt);
+    document.getElementById("draftPersistenceStatus").textContent = Number.isNaN(restoredAt.getTime())
+      ? "Restored saved drafts"
+      : `Restored saved drafts from ${restoredAt.toLocaleString()}`;
+    return true;
+  } catch (error) {
+    document.getElementById("draftPersistenceStatus").textContent = "Draft storage is unavailable; keep this page open.";
+    return false;
+  }
+}
+
+function setupDraftPersistence() {
+  if (!isAddWorkspace()) return;
+  navigator.storage?.persist?.().catch(() => {});
+  const form = document.getElementById("entryForm");
+  const saveCurrent = (event) => {
+    if (["entryPdf", "editPdf", "citationImport", "doiImport"].includes(event.target.id)) return;
+    captureDraft();
+  };
+  form.addEventListener("input", saveCurrent);
+  form.addEventListener("change", saveCurrent);
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "hidden") {
+      captureDraft();
+      persistDraftQueue();
+    }
+  });
+  window.addEventListener("pagehide", () => {
+    captureDraft();
+    persistDraftQueue();
+  });
+}
 
 function blankDraft() {
   return {
@@ -132,6 +227,7 @@ function captureDraft() {
   draft.unread = document.getElementById("entryUnread").checked;
   draft.star = document.getElementById("entryStar").checked;
   draft.annotated = document.getElementById("entryAnnotated").checked;
+  scheduleDraftPersistence();
 }
 
 function renderDraft() {
@@ -207,7 +303,9 @@ function addDraft(values) {
     entryDrafts.push(draft);
   }
   if (draftIsEmpty(draft)) draft.sources = [];
-  return mergeDraft(draft, values, false);
+  mergeDraft(draft, values, false);
+  scheduleDraftPersistence();
+  return draft;
 }
 
 async function lookupIntoDraft(identifier, preferredDraft = null) {
@@ -215,6 +313,7 @@ async function lookupIntoDraft(identifier, preferredDraft = null) {
   let draft = findDraft({ doi: item.doi || identifier, title: item.title });
   if (!draft) draft = preferredDraft || addDraft({ doi: item.doi || identifier, source: item.source });
   mergeDraft(draft, item, true);
+  scheduleDraftPersistence();
   return draft;
 }
 
@@ -422,6 +521,60 @@ function setupChangeHistory(items) {
   undoButton.disabled = !items.some((item) => item.undoable);
 }
 
+async function refreshLibraryCheckpoint() {
+  const response = await fetch(freshUrl("/library-status"), { cache: "no-store" });
+  if (!response.ok) throw new Error("Library status could not be loaded");
+  const data = await response.json();
+  const badge = document.getElementById("checkpointBadge");
+  badge.textContent = data.clean ? "No pending data changes" : `${data.changes.length} pending data change(s)`;
+  badge.classList.toggle("clean", data.clean);
+  const sync = document.getElementById("checkpointSync");
+  sync.textContent = data.ahead === null
+    ? "Git synchronization unavailable"
+    : `GitHub: ${data.ahead} ahead, ${data.behind} behind`;
+  const files = document.getElementById("checkpointFiles");
+  files.replaceChildren();
+  data.changes.forEach((change) => {
+    const item = document.createElement("li");
+    item.textContent = change;
+    files.appendChild(item);
+  });
+  document.getElementById("checkpointCommands").textContent = data.commands.join("\n");
+  return data;
+}
+
+function setupLibraryCheckpoint() {
+  const status = document.getElementById("checkpointStatus");
+  const output = document.getElementById("validationOutput");
+  document.getElementById("refreshCheckpointBtn").addEventListener("click", async () => {
+    status.textContent = "Refreshing…";
+    try {
+      await refreshLibraryCheckpoint();
+      status.textContent = "Status refreshed";
+    } catch (error) { status.textContent = error.message; }
+  });
+  document.getElementById("validateLibraryBtn").addEventListener("click", async () => {
+    status.textContent = "Validating…";
+    output.hidden = true;
+    try {
+      const result = await postJson("/validate-library", {});
+      output.textContent = result.checks
+        .map((check) => `${check.ok ? "✓" : "✗"} ${check.label}\n${check.output}`)
+        .join("\n\n");
+      output.hidden = false;
+      status.textContent = result.ok ? "Library validation passed" : "Validation found problems";
+    } catch (error) { status.textContent = `Validation failed: ${error.message}`; }
+  });
+  document.getElementById("checkpointLibraryBtn").addEventListener("click", async () => {
+    status.textContent = "Creating backup…";
+    try {
+      const result = await postJson("/checkpoint-library", {});
+      status.textContent = `Backup created: ${result.path}`;
+    } catch (error) { status.textContent = `Backup failed: ${error.message}`; }
+  });
+  refreshLibraryCheckpoint().catch((error) => { status.textContent = error.message; });
+}
+
 function setupSavedFilterManager(filters) {
   const select = document.getElementById("savedFilterSelect");
   const nameInput = document.getElementById("savedFilterName");
@@ -517,13 +670,20 @@ async function init() {
     setupSavedFilterManager(savedFilters);
     await setupWallpaperOptions();
     resetForm(false);
+    if (location.pathname.endsWith("/manage.html")) setupLibraryCheckpoint();
 
     if (editCode) {
       const row = rows.find((item) => item.code === editCode);
       if (row) editEntry(row);
+    } else {
+      await restoreDraftQueue();
     }
+    setupDraftPersistence();
 
-    document.getElementById("cancelEditBtn").addEventListener("click", () => resetForm(true));
+    document.getElementById("cancelEditBtn").addEventListener("click", async () => {
+      resetForm(true);
+      await restoreDraftQueue();
+    });
     document.getElementById("showNewKeywordBtn").addEventListener("click", () => {
       const container = document.getElementById("entryNewKeywordContainer");
       container.hidden = !container.hidden;
@@ -571,7 +731,10 @@ async function init() {
         const duplicateText = audit.duplicates.length
           ? `\nDuplicate-file groups:\n${audit.duplicates.map((codes) => codes.join(", ")).join("\n")}`
           : "\nNo duplicate local PDF files.";
-        alert(`Local PDFs: ${audit.summary.local}\nChecksums OK: ${audit.summary.ok}\nNot yet recorded: ${audit.summary.unrecorded}\nChanged/mismatched: ${audit.summary.mismatch}${duplicateText}`);
+        const annotationText = audit.annotation_scan
+          ? `\nAnnotation scan: ${audit.annotation_scan.checked} checked, ${audit.annotation_scan.updated} newly marked`
+          : "";
+        alert(`Local PDFs: ${audit.summary.local}\nChecksums OK: ${audit.summary.ok}\nNot yet recorded: ${audit.summary.unrecorded}\nChanged/mismatched: ${audit.summary.mismatch}${annotationText}${duplicateText}`);
       } catch (error) {
         alert("Could not audit local PDFs. Keep the viewer server running.");
       } finally {
@@ -629,6 +792,7 @@ async function init() {
       if (!entryDrafts.length) entryDrafts.push(blankDraft());
       activeDraftIndex = Math.min(activeDraftIndex, entryDrafts.length - 1);
       renderDraft();
+      scheduleDraftPersistence();
       document.getElementById("entryStatus").textContent = "Draft discarded; no catalog changes were made";
     });
 
@@ -697,6 +861,7 @@ async function init() {
         } catch (error) { alert(error.message); }
       }
       renderDraft();
+      scheduleDraftPersistence();
       status.textContent = `Added ${files.length} PDF file(s) to the review queue`;
     });
 
@@ -748,7 +913,7 @@ async function init() {
         }
         if (pdfFile) {
           status.textContent = `Saved ${saved.code}; adding PDF…`;
-          await attachPdf(saved.code, pdfFile);
+          await attachPdf(saved.code, pdfFile, editing);
         }
         status.textContent = `${editing ? "Updated" : "Created"} ${saved.code}${pdfFile ? " with a local PDF" : ""}`;
         if (editing) {
@@ -758,6 +923,7 @@ async function init() {
           if (!entryDrafts.length) entryDrafts.push(blankDraft());
           activeDraftIndex = Math.min(activeDraftIndex, entryDrafts.length - 1);
           renderDraft();
+          scheduleDraftPersistence();
           button.disabled = false;
         }
       } catch (error) {

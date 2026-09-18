@@ -10,6 +10,7 @@ import shutil
 import socket
 import subprocess
 import sys
+import tempfile
 from datetime import date, datetime, timezone
 from pathlib import Path
 
@@ -47,7 +48,7 @@ DOI_RE = re.compile(r"\b10\.\d{4,9}/[^\s\"<>]+", re.IGNORECASE)
 DOI_FULL_RE = re.compile(r"^10\.\d{4,9}/\S+$", re.IGNORECASE)
 YEAR_RE = re.compile(r"^\d{4}$")
 ADDED_AT_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
-PUBLICATION_DATE_RE = re.compile(r"^\d{4}-(0[1-9]|1[0-2])(?:-(0[1-9]|[12]\d|3[01]))?$")
+PUBLICATION_DATE_RE = re.compile(r"^\d{4}(?:-(0[1-9]|1[0-2])(?:-(0[1-9]|[12]\d|3[01]))?)?$")
 ARXIV_RE = re.compile(r"(?<!\d)(\d{2})(\d{2})\.\d{4,5}(?:v\d+)?(?!\d)")
 ARXIV_TEXT_RE = re.compile(r"arxiv:\s*(\d{4})\.(\d{4,5})", re.IGNORECASE)
 BAD_TITLE_RE = re.compile(
@@ -894,6 +895,43 @@ def read_csv_header(path: Path) -> list:
         return next(csv.reader(handle), [])
 
 
+def migrate_metadata_schema() -> list:
+    """Add missing canonical columns while preserving all existing field values."""
+    if not METADATA_FILE.exists():
+        METADATA_DIR.mkdir(parents=True, exist_ok=True)
+        with METADATA_FILE.open("w", newline="") as handle:
+            csv.DictWriter(handle, fieldnames=FIELDS, lineterminator="\n").writeheader()
+        return list(FIELDS)
+    with METADATA_FILE.open("r", newline="") as handle:
+        reader = csv.DictReader(handle)
+        header = list(reader.fieldnames or [])
+        rows = list(reader)
+    unknown = [field for field in header if field not in FIELDS]
+    if unknown:
+        raise ValueError(
+            "Refusing to discard unknown metadata columns: " + ", ".join(unknown)
+        )
+    missing = [field for field in FIELDS if field not in header]
+    if not missing:
+        return []
+
+    backup_dir = METADATA_DIR / "backups" / "schema_migrations"
+    backup_dir.mkdir(parents=True, exist_ok=True)
+    stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%fZ")
+    shutil.copy2(METADATA_FILE, backup_dir / f"metadata-before-{stamp}.csv")
+    with tempfile.NamedTemporaryFile(
+        "w", dir=METADATA_DIR, prefix=".metadata-", suffix=".tmp",
+        delete=False, newline="",
+    ) as handle:
+        temp_path = Path(handle.name)
+        writer = csv.DictWriter(handle, fieldnames=FIELDS, lineterminator="\n")
+        writer.writeheader()
+        for row in rows:
+            writer.writerow({field: row.get(field, "") for field in FIELDS})
+    os.replace(temp_path, METADATA_FILE)
+    return missing
+
+
 def find_bad_titles(rows: list) -> list:
     bad = []
     for row in rows:
@@ -1490,6 +1528,7 @@ def main():
         help="Mark every catalog entry instead of only PDFs available locally",
     )
     sub.add_parser("checksums", help="Record SHA-256 checksums and report duplicate PDFs")
+    sub.add_parser("migrate-metadata", help="Safely add missing metadata columns")
 
     find = sub.add_parser("find", help="Filter metadata and list codes")
     find.add_argument("--from-year", type=int)
@@ -1589,6 +1628,13 @@ def main():
         return
     if args.command == "checksums":
         update_pdf_checksums()
+        return
+    if args.command == "migrate-metadata":
+        missing = migrate_metadata_schema()
+        if missing:
+            print("Added metadata columns: " + ", ".join(missing))
+        else:
+            print("Metadata schema is already current")
         return
     if args.command == "abstracts":
         rebuild_abstracts(from_pdfs=args.from_pdfs, force=args.force)

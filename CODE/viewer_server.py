@@ -24,9 +24,11 @@ SAVED_LISTS_DIR = ROOT / "SAVED_LISTS"
 ABSTRACTS_FILE = ROOT / "METADATA" / "abstracts.csv"
 METADATA_FILE = ROOT / "METADATA" / "metadata.csv"
 CHANGE_BACKUP_DIR = ROOT / "METADATA" / "backups" / "viewer_changes"
+CHECKPOINT_BACKUP_DIR = ROOT / "METADATA" / "backups" / "checkpoints"
 CHANGE_HISTORY_LIMIT = 10
 CUSTOM_WALLPAPER_DIR = ROOT / "VIEWER" / "wallpapers" / "custom"
 _ABSTRACT_CACHE = {"mtime_ns": None, "data": {}}
+_ANNOTATION_SCAN_CACHE = {}
 _WRITE_LOCK = threading.Lock()
 METADATA_FIELDS = [
     "code",
@@ -56,14 +58,43 @@ class DuplicateEntryError(ValueError):
         self.matches = matches
 
 
+def migrate_metadata_schema() -> list:
+    """Add known missing columns without ever discarding unknown future columns."""
+    if not METADATA_FILE.exists():
+        return []
+    with METADATA_FILE.open(newline="", encoding="utf-8") as handle:
+        reader = csv.DictReader(handle)
+        header = list(reader.fieldnames or [])
+        rows = list(reader)
+    unknown = [field for field in header if field not in METADATA_FIELDS]
+    if unknown:
+        raise RuntimeError(
+            "metadata.csv contains columns this version does not understand: "
+            + ", ".join(unknown)
+        )
+    missing = [field for field in METADATA_FIELDS if field not in header]
+    if not missing:
+        return []
+
+    backup_dir = METADATA_FILE.parent / "backups" / "schema_migrations"
+    backup_dir.mkdir(parents=True, exist_ok=True)
+    stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%fZ")
+    shutil.copy2(METADATA_FILE, backup_dir / f"metadata-before-{stamp}.csv")
+    write_metadata_rows(rows, migrate=False)
+    return missing
+
+
 def load_metadata_rows() -> list:
     if not METADATA_FILE.exists():
         return []
+    migrate_metadata_schema()
     with METADATA_FILE.open(newline="", encoding="utf-8") as handle:
         return list(csv.DictReader(handle))
 
 
-def write_metadata_rows(rows: list) -> None:
+def write_metadata_rows(rows: list, migrate: bool = True) -> None:
+    if migrate:
+        migrate_metadata_schema()
     METADATA_FILE.parent.mkdir(parents=True, exist_ok=True)
     with tempfile.NamedTemporaryFile(
         "w",
@@ -218,6 +249,13 @@ def undo_last_change() -> dict:
             trash_dir = ROOT / "PDFs" / ".trash"
             trash_dir.mkdir(parents=True, exist_ok=True)
             created_path.replace(trash_dir / f"undo-{snapshot.name}-{created_path.name}")
+    replaced_pdf = manifest.get("replaced_pdf") or {}
+    if replaced_pdf:
+        replacement_target = ROOT / replaced_pdf.get("path", "")
+        replacement_backup = snapshot / replaced_pdf.get("backup", "")
+        if replacement_backup.exists():
+            replacement_target.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(replacement_backup, replacement_target)
     moved_pdf = manifest.get("moved_pdf") or {}
     moved_from = ROOT / moved_pdf.get("from", "") if moved_pdf else None
     moved_to = ROOT / moved_pdf.get("to", "") if moved_pdf else None
@@ -275,9 +313,9 @@ def create_metadata_entry(payload: dict) -> dict:
 
     if not title:
         raise ValueError("Title is required")
-    publication_pattern = r"\d{4}-(0[1-9]|1[0-2])(?:-(0[1-9]|[12]\d|3[01]))?"
+    publication_pattern = r"\d{4}(?:-(0[1-9]|1[0-2])(?:-(0[1-9]|[12]\d|3[01]))?)?"
     if publication_date and not re.fullmatch(publication_pattern, publication_date):
-        raise ValueError("Publication date must use YYYY-MM or YYYY-MM-DD")
+        raise ValueError("Publication date must use YYYY, YYYY-MM, or YYYY-MM-DD")
     if publication_date and len(publication_date) == 10:
         try:
             date.fromisoformat(publication_date)
@@ -334,9 +372,9 @@ def create_metadata_entry(payload: dict) -> dict:
 
 def validate_publication_date(value: str) -> str:
     value = str(value or "").strip()
-    pattern = r"\d{4}-(0[1-9]|1[0-2])(?:-(0[1-9]|[12]\d|3[01]))?"
+    pattern = r"\d{4}(?:-(0[1-9]|1[0-2])(?:-(0[1-9]|[12]\d|3[01]))?)?"
     if value and not re.fullmatch(pattern, value):
-        raise ValueError("Publication date must use YYYY-MM or YYYY-MM-DD")
+        raise ValueError("Publication date must use YYYY, YYYY-MM, or YYYY-MM-DD")
     if value and len(value) == 10:
         try:
             date.fromisoformat(value)
@@ -377,7 +415,12 @@ def update_metadata_entry(payload: dict) -> dict:
                 "my_keywords": str(payload.get("my_keywords") or "").strip(),
                 "star": "1" if payload.get("star") in (True, "1", 1) else "",
                 "unread": "1" if payload.get("unread") in (True, "1", 1) else "",
-                "annotated": "1" if payload.get("annotated") in (True, "1", 1) else "",
+                # General metadata edits must not erase a previously detected/manual mark.
+                # The dedicated card toggle remains the explicit way to clear it.
+                "annotated": "1" if (
+                    row.get("annotated") == "1"
+                    or payload.get("annotated") in (True, "1", 1)
+                ) else "",
                 "notes": str(payload.get("notes") or "").strip(),
             }
         )
@@ -447,6 +490,43 @@ def pdf_has_annotations(path: Path) -> bool:
     except Exception:
         return False
     return False
+
+
+def reconcile_local_pdf_annotations() -> dict:
+    """Promote entries when a new or replaced local PDF contains structured annotations."""
+    rows = load_metadata_rows()
+    by_code = {(row.get("code") or "").strip(): row for row in rows}
+    checked = detected = updated = 0
+    for path in sorted((ROOT / "PDFs").glob("*.pdf")):
+        row = by_code.get(path.stem)
+        if row is None:
+            continue
+        stat = path.stat()
+        signature = (stat.st_mtime_ns, stat.st_size)
+        if _ANNOTATION_SCAN_CACHE.get(path.stem) == signature:
+            continue
+        checked += 1
+        has_annotations = pdf_has_annotations(path)
+        _ANNOTATION_SCAN_CACHE[path.stem] = signature
+        if has_annotations:
+            detected += 1
+            if row.get("annotated") != "1":
+                row["annotated"] = "1"
+                updated += 1
+    if updated:
+        create_change_snapshot("automatic annotation scan")
+        write_metadata_rows(rows)
+    return {"checked": checked, "detected": detected, "updated": updated}
+
+
+def annotation_scan_worker(stop_event: threading.Event) -> None:
+    while not stop_event.wait(15):
+        try:
+            with _WRITE_LOCK:
+                reconcile_local_pdf_annotations()
+        except (OSError, RuntimeError):
+            # Keep the local viewer alive if a PDF is temporarily being copied.
+            continue
 
 
 def write_abstracts_map(abstracts: dict) -> None:
@@ -1094,6 +1174,81 @@ def manage_saved_filter(action: str, filename: str, new_name: str = "") -> dict:
     return {"action": "rename", "filename": destination.name, "name": display_name}
 
 
+def library_git_status() -> dict:
+    scope = [
+        "METADATA/metadata.csv", "METADATA/abstracts.csv",
+        "SAVED_LISTS", "CONFIGS/config.json",
+    ]
+    result = subprocess.run(
+        ["git", "status", "--porcelain=v1", "--untracked-files=all", "--", *scope],
+        cwd=ROOT, capture_output=True, text=True, timeout=15, check=False,
+    )
+    changes = [line for line in result.stdout.splitlines() if line.strip()]
+    sync = subprocess.run(
+        ["git", "rev-list", "--left-right", "--count", "origin/main...HEAD"],
+        cwd=ROOT, capture_output=True, text=True, timeout=15, check=False,
+    )
+    behind = ahead = None
+    match = re.fullmatch(r"(\d+)\s+(\d+)", sync.stdout.strip())
+    if match:
+        behind, ahead = map(int, match.groups())
+    return {
+        "clean": not changes,
+        "changes": changes,
+        "ahead": ahead,
+        "behind": behind,
+        "commands": [
+            "scripts/verify.sh",
+            "git add METADATA/metadata.csv METADATA/abstracts.csv SAVED_LISTS CONFIGS/config.json",
+            'git commit -m "Update bibliography data"',
+            "git push origin main",
+        ],
+    }
+
+
+def validate_library() -> dict:
+    checks = []
+    for label, command in (
+        ("Integrity", ["python3", "CODE/bib.py", "verify"]),
+        ("Metadata", ["python3", "CODE/bib.py", "validate"]),
+    ):
+        result = subprocess.run(
+            command, cwd=ROOT, capture_output=True, text=True, timeout=60, check=False,
+        )
+        checks.append({
+            "label": label, "ok": result.returncode == 0,
+            "output": (result.stdout + result.stderr).strip(),
+        })
+    return {"ok": all(item["ok"] for item in checks), "checks": checks}
+
+
+def create_library_checkpoint() -> dict:
+    stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    CHECKPOINT_BACKUP_DIR.mkdir(parents=True, exist_ok=True)
+    destination = CHECKPOINT_BACKUP_DIR / stamp
+    suffix = 2
+    while destination.exists():
+        destination = CHECKPOINT_BACKUP_DIR / f"{stamp}-{suffix}"
+        suffix += 1
+    destination.mkdir()
+    copied = []
+    for source in (METADATA_FILE, ABSTRACTS_FILE, ROOT / "CONFIGS" / "config.json"):
+        if source.exists():
+            relative = source.relative_to(ROOT)
+            target = destination / relative
+            target.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(source, target)
+            copied.append(str(relative))
+    if SAVED_LISTS_DIR.exists():
+        shutil.copytree(SAVED_LISTS_DIR, destination / "SAVED_LISTS")
+        copied.extend(str(path.relative_to(ROOT)) for path in SAVED_LISTS_DIR.glob("*.json"))
+    (destination / "manifest.json").write_text(
+        json.dumps({"created_at": stamp, "files": copied}, indent=2) + "\n",
+        encoding="utf-8",
+    )
+    return {"path": str(destination.relative_to(ROOT)), "files": len(copied)}
+
+
 def load_abstracts_map() -> dict:
     if not ABSTRACTS_FILE.exists():
         _ABSTRACT_CACHE["mtime_ns"] = None
@@ -1138,6 +1293,9 @@ class Handler(SimpleHTTPRequestHandler):
                 "/pdf-status",
                 "/pdf-audit",
                 "/change-history",
+                "/library-status",
+                "/validate-library",
+                "/checkpoint-library",
                 "/wallpapers",
                 "/save-list",
                 "/save-filter",
@@ -1197,6 +1355,12 @@ class Handler(SimpleHTTPRequestHandler):
             return
         if parsed.path == "/change-history":
             self._send_json({"history": change_history()})
+            return
+        if parsed.path == "/library-status":
+            try:
+                self._send_json(library_git_status())
+            except (OSError, subprocess.SubprocessError) as exc:
+                self.send_error(500, str(exc))
             return
         if parsed.path == "/wallpapers":
             self._send_json({"custom": list_custom_wallpapers()})
@@ -1261,6 +1425,20 @@ class Handler(SimpleHTTPRequestHandler):
                 return
             if path == "/toggle-annotated":
                 self._handle_toggle_annotated()
+                return
+            if path == "/validate-library":
+                try:
+                    self._send_json(validate_library())
+                except (OSError, subprocess.SubprocessError) as exc:
+                    self.send_error(500, str(exc))
+                return
+            if path == "/checkpoint-library":
+                try:
+                    with _WRITE_LOCK:
+                        result = create_library_checkpoint()
+                    self._send_json(result)
+                except OSError as exc:
+                    self.send_error(500, str(exc))
                 return
             if path == "/save-notes":
                 self._handle_save_notes()
@@ -1431,7 +1609,9 @@ class Handler(SimpleHTTPRequestHandler):
             path.write_text(json.dumps(data, indent=2), encoding="utf-8")
 
     def _handle_attach_pdf(self, query: str):
-        code = (parse_qs(query).get("code", [""])[0] or "").strip()
+        params = parse_qs(query)
+        code = (params.get("code", [""])[0] or "").strip()
+        replace_existing = (params.get("replace", [""])[0] or "") == "1"
         content_length = int(self.headers.get("Content-Length", "0"))
         if not code:
             self.send_error(400, "Code is required")
@@ -1446,11 +1626,14 @@ class Handler(SimpleHTTPRequestHandler):
                 self.send_error(404, "Entry not found")
                 return
             target = ROOT / "PDFs" / f"{code}.pdf"
-            if target.exists():
+            target_existed = target.exists()
+            if target_existed and not replace_existing:
                 self.send_error(409, "A local PDF already exists")
                 return
             target.parent.mkdir(parents=True, exist_ok=True)
-            snapshot = create_change_snapshot("attach PDF")
+            snapshot = create_change_snapshot("replace PDF" if target_existed else "attach PDF")
+            if target_existed:
+                shutil.copy2(target, snapshot / "previous.pdf")
             with tempfile.NamedTemporaryFile(
                 "wb", dir=target.parent, prefix=".upload-", suffix=".pdf", delete=False
             ) as handle:
@@ -1476,6 +1659,8 @@ class Handler(SimpleHTTPRequestHandler):
                 return
             temp_path.replace(target)
             detected_annotations = pdf_has_annotations(target)
+            stat = target.stat()
+            _ANNOTATION_SCAN_CACHE[code] = (stat.st_mtime_ns, stat.st_size)
             hosts = [host.strip() for host in (row.get("pdf_hosts") or "").split(";")]
             update_entry_hosts(code, hosts + [socket.gethostname()])
             rows = load_metadata_rows()
@@ -1485,10 +1670,16 @@ class Handler(SimpleHTTPRequestHandler):
                     if detected_annotations:
                         candidate["annotated"] = "1"
             write_metadata_rows(rows)
-            update_snapshot_manifest(snapshot, created_pdf=str(target.relative_to(ROOT)))
+            if target_existed:
+                update_snapshot_manifest(
+                    snapshot,
+                    replaced_pdf={"path": str(target.relative_to(ROOT)), "backup": "previous.pdf"},
+                )
+            else:
+                update_snapshot_manifest(snapshot, created_pdf=str(target.relative_to(ROOT)))
         self._send_json({
             "code": code, "hostname": socket.gethostname(), "sha256": digest.hexdigest(),
-            "annotated": detected_annotations,
+            "annotated": detected_annotations, "replaced": target_existed,
         })
 
     def _handle_set_pdf_hosts(self):
@@ -1746,12 +1937,21 @@ class Handler(SimpleHTTPRequestHandler):
         self._send_json({"code": code, "abstract": abstracts.get(code, "")})
 
     def _handle_pdf_status(self):
+        with _WRITE_LOCK:
+            annotation_scan = reconcile_local_pdf_annotations()
         pdf_dir = ROOT / "PDFs"
         local_codes = sorted(path.stem for path in pdf_dir.glob("*.pdf"))
-        self._send_json({"hostname": socket.gethostname(), "local_codes": local_codes})
+        self._send_json({
+            "hostname": socket.gethostname(), "local_codes": local_codes,
+            "annotation_scan": annotation_scan,
+        })
 
     def _handle_pdf_audit(self):
-        self._send_json(audit_pdfs(update_missing=False))
+        with _WRITE_LOCK:
+            annotation_scan = reconcile_local_pdf_annotations()
+            audit = audit_pdfs(update_missing=False)
+        audit["annotation_scan"] = annotation_scan
+        self._send_json(audit)
 
     def _handle_toggle_star(self):
         self._handle_toggle_flag("star")
@@ -1884,8 +2084,17 @@ class Handler(SimpleHTTPRequestHandler):
 
 if __name__ == "__main__":
     os.chdir(ROOT)
+    migrate_metadata_schema()
     # This server exposes endpoints that modify local metadata and open PDFs.
     # Keep it available only to this computer; it is not an authenticated web app.
     server = ThreadingHTTPServer(("127.0.0.1", 8000), Handler)
+    annotation_stop = threading.Event()
+    threading.Thread(
+        target=annotation_scan_worker, args=(annotation_stop,), daemon=True,
+        name="pdf-annotation-scan",
+    ).start()
     print("Serving on http://localhost:8000/VIEWER/viewer.html")
-    server.serve_forever()
+    try:
+        server.serve_forever()
+    finally:
+        annotation_stop.set()
