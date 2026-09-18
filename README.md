@@ -34,7 +34,9 @@ code,abstract
 2. Stage one or more RIS/BibTeX records, DOI/arXiv identifiers, and optional PDFs.
 3. Review each draft page and confirm entries one at a time. Nothing is added before confirmation.
    The browser preserves the draft queue and selected PDFs across refreshes and server restarts.
-4. If needed, sync codes and filenames from later title corrections:
+4. Editing an entry automatically regenerates its canonical code from the latest year, type,
+   and title, and safely renames its local PDF and sidecar references. For older bulk cleanup,
+   you can still run:
 
 ```bash
 python3 CODE/bib.py cleanup --rename

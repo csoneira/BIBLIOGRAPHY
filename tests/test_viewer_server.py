@@ -449,6 +449,16 @@ class TestCreateMetadataEntry(unittest.TestCase):
         self.assertEqual(bibtex[0]["abstract"], "Citation-only abstract")
         self.assertEqual(bibtex[1]["type"], "book")
 
+        raether = server.parse_citation_records(
+            """@book{Raether1964,
+            author={Raether, Heinz},
+            title={Electron Avalanches and Breakdown in Gases},
+            publisher={Butterworths}, address={London}, year={1964},
+            series={Butterworths Advanced Physics Series}}"""
+        )[0]
+        self.assertEqual(raether["publication_date"], "1964")
+        self.assertEqual(raether["journal"], "Butterworths")
+
         accents = server.parse_citation_records(
             r"""@book{accented,
             title={Regulamento de matr\'icula e informa\c{c}\~ao},
@@ -509,6 +519,50 @@ ER  -"""
             server.undo_last_change()
             self.assertEqual(len(server.load_metadata_rows()), 2)
             self.assertTrue(source_pdf.exists())
+
+    def test_edit_regenerates_code_and_renames_pdf_and_sidecars(self):
+        repo_root = Path(__file__).resolve().parents[1]
+        server = load_server(repo_root / "CODE" / "viewer_server.py")
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            root = Path(tmp_dir)
+            (root / "PDFs").mkdir()
+            server.ROOT = root
+            server.METADATA_FILE = root / "METADATA" / "metadata.csv"
+            server.ABSTRACTS_FILE = root / "METADATA" / "abstracts.csv"
+            server.SAVED_LISTS_DIR = root / "SAVED_LISTS"
+            server.CHANGE_BACKUP_DIR = root / "METADATA" / "backups" / "viewer_changes"
+            server._ABSTRACT_CACHE = {"mtime_ns": None, "data": {}}
+            row = server.create_metadata_entry(
+                {"title": "Electron Avalanches and Breakdown in Gases", "type": "book"}
+            )
+            old_code = row["code"]
+            old_pdf = root / "PDFs" / f"{old_code}.pdf"
+            old_pdf.write_bytes(b"%PDF-book")
+            server.set_abstract(old_code, "Book abstract")
+            server.SAVED_LISTS_DIR.mkdir()
+            saved_filter = server.SAVED_LISTS_DIR / "Books.json"
+            saved_filter.write_text(
+                json.dumps({"name": "Books", "codes": [old_code], "filters": {}}),
+                encoding="utf-8",
+            )
+
+            snapshot = server.create_change_snapshot("update entry")
+            updated = server.update_metadata_entry(
+                {**row, "publication_date": "1964"}, snapshot=snapshot
+            )
+            new_code = "1964_book_electron_avalanches_and_breakdown_in_gases"
+            self.assertEqual(updated["code"], new_code)
+            self.assertEqual(updated["previous_code"], old_code)
+            self.assertFalse(old_pdf.exists())
+            self.assertTrue((root / "PDFs" / f"{new_code}.pdf").exists())
+            self.assertEqual(server.load_abstracts_map()[new_code], "Book abstract")
+            self.assertEqual(json.loads(saved_filter.read_text())["codes"], [new_code])
+
+            server.undo_last_change()
+            self.assertEqual(server.load_metadata_rows()[0]["code"], old_code)
+            self.assertTrue(old_pdf.exists())
+            self.assertEqual(server.load_abstracts_map()[old_code], "Book abstract")
+            self.assertEqual(json.loads(saved_filter.read_text())["codes"], [old_code])
 
     def test_saved_filters_can_be_renamed_deleted_and_undone(self):
         repo_root = Path(__file__).resolve().parents[1]

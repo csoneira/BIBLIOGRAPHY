@@ -383,7 +383,62 @@ def validate_publication_date(value: str) -> str:
     return value
 
 
-def update_metadata_entry(payload: dict) -> dict:
+def canonical_entry_code(rows: list, current_code: str, title: str, doc_type: str, year: str) -> str:
+    base = f"{year or 'undated'}_{doc_type}_{slugify(title)}"
+    occupied = {
+        (row.get("code") or "").strip()
+        for row in rows
+        if (row.get("code") or "").strip() != current_code
+    }
+    candidate, suffix = base, 2
+    while candidate in occupied or (
+        candidate != current_code and (ROOT / "PDFs" / f"{candidate}.pdf").exists()
+    ):
+        candidate = f"{base}_{suffix}"
+        suffix += 1
+    return candidate
+
+
+def rename_entry_sidecars(old_code: str, new_code: str, snapshot: Path | None = None) -> None:
+    if old_code == new_code:
+        return
+    movements = []
+    old_pdf = ROOT / "PDFs" / f"{old_code}.pdf"
+    new_pdf = ROOT / "PDFs" / f"{new_code}.pdf"
+    if old_pdf.exists():
+        new_pdf.parent.mkdir(parents=True, exist_ok=True)
+        old_pdf.replace(new_pdf)
+        movements.append({
+            "from": str(old_pdf.relative_to(ROOT)),
+            "to": str(new_pdf.relative_to(ROOT)),
+        })
+
+    abstracts = load_abstracts_map()
+    if old_code in abstracts:
+        if new_code not in abstracts:
+            abstracts[new_code] = abstracts[old_code]
+        abstracts.pop(old_code, None)
+        write_abstracts_map(abstracts)
+
+    for path in SAVED_LISTS_DIR.glob("*.json"):
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+        except json.JSONDecodeError:
+            continue
+        codes = data.get("codes", [])
+        if old_code not in codes:
+            continue
+        data["codes"] = list(dict.fromkeys(new_code if code == old_code else code for code in codes))
+        path.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
+
+    cached_signature = _ANNOTATION_SCAN_CACHE.pop(old_code, None)
+    if cached_signature is not None:
+        _ANNOTATION_SCAN_CACHE[new_code] = cached_signature
+    if snapshot and movements:
+        update_snapshot_manifest(snapshot, pdf_moves=movements)
+
+
+def update_metadata_entry(payload: dict, snapshot: Path | None = None) -> dict:
     code = str(payload.get("code") or "").strip()
     title = _clean_citation_value(payload.get("title", ""))
     publication_date = validate_publication_date(payload.get("publication_date"))
@@ -398,6 +453,8 @@ def update_metadata_entry(payload: dict) -> dict:
     if matches and not payload.get("allow_duplicate"):
         raise DuplicateEntryError(matches)
 
+    publication_year = publication_date[:4] if publication_date else str(payload.get("year") or "").strip()
+    new_code = canonical_entry_code(rows, code, title, doc_type, publication_year)
     updated = None
     for row in rows:
         if (row.get("code") or "").strip() != code:
@@ -407,7 +464,7 @@ def update_metadata_entry(payload: dict) -> dict:
                 "type": doc_type,
                 "title": title,
                 "journal": _clean_citation_value(payload.get("journal", "")),
-                "year": publication_date[:4] if publication_date else str(payload.get("year") or "").strip(),
+                "year": publication_year,
                 "publication_date": publication_date,
                 "doi": str(payload.get("doi") or "").strip(),
                 "author": _clean_citation_value(payload.get("author", "")),
@@ -426,11 +483,14 @@ def update_metadata_entry(payload: dict) -> dict:
         )
         if "pdf_hosts" in payload:
             row["pdf_hosts"] = "; ".join(normalize_hosts(payload.get("pdf_hosts", "")))
+        row["code"] = new_code
         updated = dict(row)
         break
     if updated is None:
         raise LookupError("Entry not found")
+    rename_entry_sidecars(code, new_code, snapshot)
     write_metadata_rows(rows)
+    updated["previous_code"] = code
     return updated
 
 
@@ -822,6 +882,8 @@ def parse_bibtex_records(text: str) -> list[dict]:
                 publication_date += f"-{int(date_match.group(3)):02d}"
         elif year_match and month_number and 1 <= month_number <= 12:
             publication_date = f"{year_match.group(0)}-{month_number:02d}"
+        elif year_match:
+            publication_date = year_match.group(0)
         records.append({
             "title": fields.get("title", ""),
             "author": re.sub(r"\s+and\s+", "; ", fields.get("author", ""), flags=re.I),
@@ -1533,7 +1595,7 @@ class Handler(SimpleHTTPRequestHandler):
             payload = self._read_json_payload()
             with _WRITE_LOCK:
                 snapshot = create_change_snapshot("update entry")
-                row = update_metadata_entry(payload)
+                row = update_metadata_entry(payload, snapshot=snapshot)
                 if "abstract" in payload:
                     set_abstract(row["code"], payload.get("abstract", ""))
         except DuplicateEntryError as exc:
