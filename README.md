@@ -152,7 +152,7 @@ python3 CODE/bib.py mark-pdf-host --host COMPUTER-NAME --all
 - Options includes a Library checkpoint panel that shows pending catalog files and Git sync
   state, validates the catalog, creates a recoverable data backup, and displays commit commands.
 - Per-paper notes editor persisted to `METADATA/metadata.csv` (`notes` column).
-- The Add/Edit Notes field includes a reversible **Clean pasted notes** action that joins
+- The Add/Edit Notes and Abstract fields include reversible cleanup actions that join
   PDF-wrapped text while preserving bullet and numbered-item boundaries.
 - An entry form that can fill editable metadata from citations, DOI/arXiv identifiers, or a cautious
   PDF scan and optionally copy an uploaded PDF into `PDFs/`; it also supports metadata-only references.

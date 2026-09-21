@@ -138,7 +138,16 @@
               <input id="editPdf" type="file" accept="application/pdf,.pdf" />
               <p class="field-help">Replacing is recoverable from Change history and automatically rechecks annotation status.</p>
             </div>
-            <div class="wide"><label for="entryAbstract">Abstract</label><textarea id="entryAbstract"></textarea></div>
+            <div class="wide">
+              <label for="entryAbstract">Abstract</label>
+              <textarea id="entryAbstract"></textarea>
+              <div class="actions">
+                <button class="secondary" id="cleanAbstractBtn" type="button">Clean pasted abstract</button>
+                <button class="secondary" id="undoCleanAbstractBtn" type="button" hidden>Undo cleaning</button>
+                <span class="status" id="cleanAbstractStatus"></span>
+              </div>
+              <p class="field-help">Joins wrapped PDF text while retaining genuine list boundaries.</p>
+            </div>
             <div class="field-section-heading">My library fields</div>
             <div class="personal-fields">
               <div>

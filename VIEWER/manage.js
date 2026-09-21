@@ -74,7 +74,7 @@ const DRAFT_STORE_NAME = "queues";
 let entryDrafts = [];
 let activeDraftIndex = 0;
 let draftPersistenceTimer = null;
-let notesBeforeCleaning = null;
+const textBeforeCleaning = { Notes: null, Abstract: null };
 
 function isAddWorkspace() {
   return location.pathname.endsWith("/add.html");
@@ -231,12 +231,52 @@ function captureDraft() {
   scheduleDraftPersistence();
 }
 
-function resetNotesCleanupState(message = "") {
-  notesBeforeCleaning = null;
-  const undo = document.getElementById("undoCleanNotesBtn");
-  const status = document.getElementById("cleanNotesStatus");
+function resetTextCleanupState(field, message = "") {
+  textBeforeCleaning[field] = null;
+  const undo = document.getElementById(`undoClean${field}Btn`);
+  const status = document.getElementById(`clean${field}Status`);
   if (undo) undo.hidden = true;
   if (status) status.textContent = message;
+}
+
+function resetAllTextCleanupStates() {
+  resetTextCleanupState("Notes");
+  resetTextCleanupState("Abstract");
+}
+
+function setupTextCleanup(field) {
+  const input = document.getElementById(`entry${field}`);
+  document.getElementById(`clean${field}Btn`).addEventListener("click", () => {
+    const cleaner = window.BibliographyNotes?.cleanPastedNotes;
+    if (!cleaner) {
+      resetTextCleanupState(field, "Text cleaner unavailable");
+      return;
+    }
+    const original = input.value;
+    const cleaned = cleaner(original);
+    if (cleaned === original) {
+      resetTextCleanupState(field, "No unnecessary line breaks found");
+      return;
+    }
+    textBeforeCleaning[field] = original;
+    input.value = cleaned;
+    document.getElementById(`undoClean${field}Btn`).hidden = false;
+    document.getElementById(`clean${field}Status`).textContent = "Line breaks cleaned · review before saving";
+    captureDraft();
+    input.focus();
+  });
+  document.getElementById(`undoClean${field}Btn`).addEventListener("click", () => {
+    if (textBeforeCleaning[field] === null) return;
+    input.value = textBeforeCleaning[field];
+    resetTextCleanupState(field, "Cleaning undone");
+    captureDraft();
+    input.focus();
+  });
+  input.addEventListener("input", () => {
+    if (textBeforeCleaning[field] !== null) {
+      resetTextCleanupState(field, "Edited after cleaning");
+    }
+  });
 }
 
 function renderDraft() {
@@ -264,7 +304,7 @@ function renderDraft() {
   pdfStatus.textContent = draft.pdfFile ? `Current draft PDF: ${draft.pdfFile.name}` : "";
   document.getElementById("previousDraftBtn").disabled = activeDraftIndex === 0;
   document.getElementById("nextDraftBtn").disabled = activeDraftIndex >= entryDrafts.length - 1;
-  resetNotesCleanupState();
+  resetAllTextCleanupStates();
 }
 
 function startDraftQueue() {
@@ -467,7 +507,7 @@ function editEntry(row) {
   document.getElementById("entryFormTitle").textContent = `Edit: ${row.title || row.code}`;
   document.getElementById("createEntryBtn").textContent = "Save changes";
   updateNewTypeVisibility();
-  resetNotesCleanupState();
+  resetAllTextCleanupStates();
 }
 
 async function loadRows() {
@@ -720,36 +760,8 @@ async function init() {
       addNewMyKeyword();
     });
 
-    const notesInput = document.getElementById("entryNotes");
-    document.getElementById("cleanNotesBtn").addEventListener("click", () => {
-      const cleaner = window.BibliographyNotes?.cleanPastedNotes;
-      if (!cleaner) {
-        resetNotesCleanupState("Notes cleaner unavailable");
-        return;
-      }
-      const original = notesInput.value;
-      const cleaned = cleaner(original);
-      if (cleaned === original) {
-        resetNotesCleanupState("No unnecessary line breaks found");
-        return;
-      }
-      notesBeforeCleaning = original;
-      notesInput.value = cleaned;
-      document.getElementById("undoCleanNotesBtn").hidden = false;
-      document.getElementById("cleanNotesStatus").textContent = "Line breaks cleaned · review before saving";
-      captureDraft();
-      notesInput.focus();
-    });
-    document.getElementById("undoCleanNotesBtn").addEventListener("click", () => {
-      if (notesBeforeCleaning === null) return;
-      notesInput.value = notesBeforeCleaning;
-      resetNotesCleanupState("Cleaning undone");
-      captureDraft();
-      notesInput.focus();
-    });
-    notesInput.addEventListener("input", () => {
-      if (notesBeforeCleaning !== null) resetNotesCleanupState("Edited after cleaning");
-    });
+    setupTextCleanup("Notes");
+    setupTextCleanup("Abstract");
 
     document.getElementById("undoBtn").addEventListener("click", async () => {
       if (!confirm("Undo the most recent viewer change?")) return;
