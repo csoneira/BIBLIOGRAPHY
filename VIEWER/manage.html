@@ -161,7 +161,16 @@
                 </div>
               </div>
             </div>
-            <div class="wide"><label for="entryNotes">Notes</label><textarea id="entryNotes"></textarea></div>
+            <div class="wide">
+              <label for="entryNotes">Notes</label>
+              <textarea id="entryNotes"></textarea>
+              <div class="actions">
+                <button class="secondary" id="cleanNotesBtn" type="button">Clean pasted notes</button>
+                <button class="secondary" id="undoCleanNotesBtn" type="button" hidden>Undo cleaning</button>
+                <span class="status" id="cleanNotesStatus"></span>
+              </div>
+              <p class="field-help">Joins wrapped PDF text while keeping lines that begin with bullets or numbers.</p>
+            </div>
           </div>
           <div class="actions">
             <div class="checks">
@@ -306,6 +315,7 @@
       </details>
     </main>
     <script src="wallpaper.js"></script>
+    <script src="notes-cleanup.js"></script>
     <script src="manage.js"></script>
   </body>
 </html>

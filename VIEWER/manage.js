@@ -74,6 +74,7 @@ const DRAFT_STORE_NAME = "queues";
 let entryDrafts = [];
 let activeDraftIndex = 0;
 let draftPersistenceTimer = null;
+let notesBeforeCleaning = null;
 
 function isAddWorkspace() {
   return location.pathname.endsWith("/add.html");
@@ -230,6 +231,14 @@ function captureDraft() {
   scheduleDraftPersistence();
 }
 
+function resetNotesCleanupState(message = "") {
+  notesBeforeCleaning = null;
+  const undo = document.getElementById("undoCleanNotesBtn");
+  const status = document.getElementById("cleanNotesStatus");
+  if (undo) undo.hidden = true;
+  if (status) status.textContent = message;
+}
+
 function renderDraft() {
   const draft = entryDrafts[activeDraftIndex] || blankDraft();
   DRAFT_FIELDS.forEach((field) => {
@@ -255,6 +264,7 @@ function renderDraft() {
   pdfStatus.textContent = draft.pdfFile ? `Current draft PDF: ${draft.pdfFile.name}` : "";
   document.getElementById("previousDraftBtn").disabled = activeDraftIndex === 0;
   document.getElementById("nextDraftBtn").disabled = activeDraftIndex >= entryDrafts.length - 1;
+  resetNotesCleanupState();
 }
 
 function startDraftQueue() {
@@ -457,6 +467,7 @@ function editEntry(row) {
   document.getElementById("entryFormTitle").textContent = `Edit: ${row.title || row.code}`;
   document.getElementById("createEntryBtn").textContent = "Save changes";
   updateNewTypeVisibility();
+  resetNotesCleanupState();
 }
 
 async function loadRows() {
@@ -707,6 +718,37 @@ async function init() {
       if (event.key !== "Enter") return;
       event.preventDefault();
       addNewMyKeyword();
+    });
+
+    const notesInput = document.getElementById("entryNotes");
+    document.getElementById("cleanNotesBtn").addEventListener("click", () => {
+      const cleaner = window.BibliographyNotes?.cleanPastedNotes;
+      if (!cleaner) {
+        resetNotesCleanupState("Notes cleaner unavailable");
+        return;
+      }
+      const original = notesInput.value;
+      const cleaned = cleaner(original);
+      if (cleaned === original) {
+        resetNotesCleanupState("No unnecessary line breaks found");
+        return;
+      }
+      notesBeforeCleaning = original;
+      notesInput.value = cleaned;
+      document.getElementById("undoCleanNotesBtn").hidden = false;
+      document.getElementById("cleanNotesStatus").textContent = "Line breaks cleaned · review before saving";
+      captureDraft();
+      notesInput.focus();
+    });
+    document.getElementById("undoCleanNotesBtn").addEventListener("click", () => {
+      if (notesBeforeCleaning === null) return;
+      notesInput.value = notesBeforeCleaning;
+      resetNotesCleanupState("Cleaning undone");
+      captureDraft();
+      notesInput.focus();
+    });
+    notesInput.addEventListener("input", () => {
+      if (notesBeforeCleaning !== null) resetNotesCleanupState("Edited after cleaning");
     });
 
     document.getElementById("undoBtn").addEventListener("click", async () => {
