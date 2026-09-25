@@ -1015,32 +1015,36 @@ async function loadData() {
   }
   const text = await metadataResponse.text();
   const rows = toRows(text);
-  const [abstractsByCode, localPdfCodes] = await Promise.all([
+  const [abstractsByCode, pdfAvailability] = await Promise.all([
     loadAbstractsMap(),
-    loadLocalPdfCodes(),
+    loadPdfAvailability(),
   ]);
   rows.forEach((row) => {
     row.abstract = abstractsByCode[row.code] || "";
-    row.is_local = localPdfCodes.has(row.code);
+    row.is_local = pdfAvailability.local.has(row.code);
+    row.is_archived = pdfAvailability.archived.has(row.code);
     row.pdf_status = row.is_local
       ? "local"
-      : (row.pdf_hosts || "").trim()
+      : row.is_archived || (row.pdf_hosts || "").trim()
         ? "remote"
         : "not_added";
   });
   return rows;
 }
 
-async function loadLocalPdfCodes() {
+async function loadPdfAvailability() {
   try {
     const response = await fetch(freshUrl("/pdf-status"), { cache: "no-store" });
     if (!response.ok) {
-      return new Set();
+      return { local: new Set(), archived: new Set() };
     }
     const payload = await response.json();
-    return new Set(Array.isArray(payload.local_codes) ? payload.local_codes : []);
+    return {
+      local: new Set(Array.isArray(payload.local_codes) ? payload.local_codes : []),
+      archived: new Set(Array.isArray(payload.archive_codes) ? payload.archive_codes : []),
+    };
   } catch (err) {
-    return new Set();
+    return { local: new Set(), archived: new Set() };
   }
 }
 

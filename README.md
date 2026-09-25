@@ -60,6 +60,24 @@ Existing repository-based installations without `library.json` are recognized as
 legacy libraries. Running `bib.py init` against one adopts it without overwriting
 its metadata, abstracts, configuration, or saved lists.
 
+An optional rclone PDF archive is declared without credentials in `library.json`:
+
+```json
+{
+  "pdf_archive": {
+    "backend": "rclone",
+    "remote": "gdrive",
+    "path": "BIBLIOGRAPHY_PDFS"
+  }
+}
+```
+
+OAuth tokens remain in rclone's machine-local configuration. The viewer reports
+which PDFs are archived. Opening an archived PDF that is absent locally downloads
+it into `PDFs/`, verifies `pdf_sha256` when available, atomically promotes it into
+the local cache, and then opens it normally. A failed or mismatched download never
+replaces the local file.
+
 `CODE/`, `VIEWER/`, tests, and scripts continue to come from the application
 checkout. The CLI, viewer server, title-audit tool, launcher, validation actions,
 and metadata backup script all honor the selected library. This is the
@@ -197,8 +215,8 @@ python3 CODE/bib.py mark-pdf-host --host COMPUTER-NAME --all
   automatic local scan every 15 seconds. Replacing a local PDF rechecks it immediately and
   promotes the status when markup is found; flattened markings still require the manual toggle.
 - Local, Remote, and Not added badges and filtering. Local availability is checked live;
-  Remote means another computer is recorded in `pdf_hosts`, while Not added means no PDF
-  has been recorded anywhere yet.
+  Remote means the PDF is in the configured archive or another computer is recorded in
+  `pdf_hosts`, while Not added means no PDF has been recorded anywhere yet.
 - Dashboard totals for local, remote, and not-added PDFs.
 - Edit and recoverable delete controls for every entry.
 - Attach a PDF directly to an existing entry; duplicate titles and DOIs are detected.

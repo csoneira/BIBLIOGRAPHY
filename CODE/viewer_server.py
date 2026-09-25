@@ -11,6 +11,7 @@ import subprocess
 import sys
 import tempfile
 import threading
+import time
 import unicodedata
 import xml.etree.ElementTree as ET
 from datetime import date, datetime, timezone
@@ -38,6 +39,7 @@ CHANGE_HISTORY_LIMIT = 10
 CUSTOM_WALLPAPER_DIR = APPLICATION_ROOT / "VIEWER" / "wallpapers" / "custom"
 _ABSTRACT_CACHE = {"mtime_ns": None, "data": {}}
 _ANNOTATION_SCAN_CACHE = {}
+_ARCHIVE_CACHE = {"expires_at": 0.0, "codes": set(), "error": None}
 _WRITE_LOCK = threading.Lock()
 METADATA_FIELDS = [
     "code",
@@ -1247,6 +1249,7 @@ def manage_saved_filter(action: str, filename: str, new_name: str = "") -> dict:
 
 def library_git_status() -> dict:
     scope = [
+        "library.json",
         "METADATA/metadata.csv", "METADATA/abstracts.csv",
         "SAVED_LISTS", "CONFIGS/config.json",
     ]
@@ -1271,11 +1274,105 @@ def library_git_status() -> dict:
         "behind": behind,
         "commands": [
             "scripts/verify.sh",
-            "git add METADATA/metadata.csv METADATA/abstracts.csv SAVED_LISTS CONFIGS/config.json",
+            "git add library.json METADATA/metadata.csv METADATA/abstracts.csv SAVED_LISTS CONFIGS/config.json",
             'git commit -m "Update bibliography data"',
             "git push origin main",
         ],
     }
+
+
+def pdf_archive_base() -> str | None:
+    manifest = describe_library(ROOT).get("manifest") or {}
+    archive = manifest.get("pdf_archive")
+    if not isinstance(archive, dict) or archive.get("backend") != "rclone":
+        return None
+    remote = (archive.get("remote") or "").strip().rstrip(":")
+    path = (archive.get("path") or "").strip().strip("/")
+    if not remote or not path:
+        return None
+    return f"{remote}:{path}"
+
+
+def archived_pdf_codes(force: bool = False) -> tuple[set, str | None]:
+    now = time.monotonic()
+    if not force and now < _ARCHIVE_CACHE["expires_at"]:
+        return set(_ARCHIVE_CACHE["codes"]), _ARCHIVE_CACHE["error"]
+    archive = pdf_archive_base()
+    if not archive:
+        result = (set(), None)
+    elif not shutil.which("rclone"):
+        result = (set(), "rclone is not installed")
+    else:
+        try:
+            completed = subprocess.run(
+                [
+                    "rclone", "lsf", archive, "--files-only", "--max-depth", "1",
+                    "--include", "*.pdf",
+                ],
+                capture_output=True, text=True, timeout=30, check=False,
+            )
+            if completed.returncode:
+                message = completed.stderr.strip().splitlines()
+                result = (set(), message[-1] if message else "Archive query failed")
+            else:
+                codes = {
+                    Path(name.strip()).stem
+                    for name in completed.stdout.splitlines()
+                    if name.strip().lower().endswith(".pdf")
+                    and Path(name.strip()).name == name.strip()
+                }
+                result = (codes, None)
+        except (OSError, subprocess.SubprocessError) as exc:
+            result = (set(), str(exc))
+    _ARCHIVE_CACHE.update({
+        "expires_at": now + (300 if result[1] is None else 30),
+        "codes": set(result[0]),
+        "error": result[1],
+    })
+    return result
+
+
+def fetch_pdf_from_archive(code: str) -> bool:
+    if not re.fullmatch(r"[a-z0-9_]+", code):
+        raise ValueError("Invalid bibliography code")
+    archive = pdf_archive_base()
+    if not archive:
+        return False
+    if not shutil.which("rclone"):
+        raise RuntimeError("rclone is not installed")
+
+    pdf_dir = ROOT / "PDFs"
+    target = pdf_dir / f"{code}.pdf"
+    if target.exists():
+        return True
+    pdf_dir.mkdir(parents=True, exist_ok=True)
+    with tempfile.NamedTemporaryFile(
+        dir=pdf_dir, prefix=f".{code}.", suffix=".archive.tmp", delete=False,
+    ) as handle:
+        temp_path = Path(handle.name)
+    try:
+        completed = subprocess.run(
+            [
+                "rclone", "copyto", f"{archive}/{code}.pdf", str(temp_path),
+                "--timeout", "10m", "--retries", "3", "--low-level-retries", "3",
+            ],
+            capture_output=True, text=True, timeout=900, check=False,
+        )
+        if completed.returncode:
+            message = completed.stderr.strip().splitlines()
+            raise RuntimeError(message[-1] if message else "Archive download failed")
+
+        row = next(
+            (item for item in load_metadata_rows() if item.get("code", "").strip() == code),
+            None,
+        )
+        expected = (row or {}).get("pdf_sha256", "").strip().lower()
+        if expected and sha256_file(temp_path).lower() != expected:
+            raise RuntimeError("Archived PDF checksum does not match metadata")
+        os.replace(temp_path, target)
+    finally:
+        temp_path.unlink(missing_ok=True)
+    return True
 
 
 def validate_library() -> dict:
@@ -2035,8 +2132,10 @@ class Handler(SimpleHTTPRequestHandler):
             annotation_scan = reconcile_local_pdf_annotations()
         pdf_dir = ROOT / "PDFs"
         local_codes = sorted(path.stem for path in pdf_dir.glob("*.pdf"))
+        archive_codes, archive_error = archived_pdf_codes()
         self._send_json({
             "hostname": socket.gethostname(), "local_codes": local_codes,
+            "archive_codes": sorted(archive_codes), "archive_error": archive_error,
             "annotation_scan": annotation_scan,
         })
 
@@ -2113,8 +2212,13 @@ class Handler(SimpleHTTPRequestHandler):
             self.send_error(400, "Invalid code")
             return
         if not pdf_path.exists():
-            self.send_error(404, "PDF not found")
-            return
+            try:
+                if not fetch_pdf_from_archive(code):
+                    self.send_error(404, "PDF not found")
+                    return
+            except (OSError, RuntimeError, ValueError) as exc:
+                self.send_error(502, f"PDF archive retrieval failed: {exc}")
+                return
 
         try:
             opener = "evince" if shutil.which("evince") else "xdg-open"
