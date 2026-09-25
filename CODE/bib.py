@@ -14,14 +14,31 @@ import tempfile
 from datetime import date, datetime, timezone
 from pathlib import Path
 
-top = Path(__file__).resolve().parent.parent
-PDF_DIR = top / "PDFs"
+APPLICATION_ROOT = Path(__file__).resolve().parent.parent
+CODE_ROOT = Path(__file__).resolve().parent
+if str(CODE_ROOT) not in sys.path:
+    sys.path.insert(0, str(CODE_ROOT))
+from library_state import (
+    clear_library_selection,
+    describe_library,
+    initialize_library,
+    resolve_library_selection,
+    save_library_selection,
+)
+
+# Keep the repository root as the default so existing checkouts continue to work.
+# A library can be moved out of the application repository by setting this to
+# its directory before invoking any command.
+LIBRARY_SELECTION = resolve_library_selection(APPLICATION_ROOT)
+LIBRARY_ROOT = LIBRARY_SELECTION["root"]
+top = LIBRARY_ROOT  # Backward-compatible alias used by older integrations.
+PDF_DIR = LIBRARY_ROOT / "PDFs"
 LIB_DIR = PDF_DIR
-METADATA_DIR = top / "METADATA"
+METADATA_DIR = LIBRARY_ROOT / "METADATA"
 METADATA_FILE = METADATA_DIR / "metadata.csv"
 ABSTRACTS_FILE = METADATA_DIR / "abstracts.csv"
 COLLECTIONS_FILE = METADATA_DIR / "collections.json"
-CONFIG_FILE = top / "CONFIGS" / "config.json"
+CONFIG_FILE = LIBRARY_ROOT / "CONFIGS" / "config.json"
 
 FIELDS = [
     "code",
@@ -1517,6 +1534,22 @@ def main():
     parser = argparse.ArgumentParser(description="Bibliography helper")
     sub = parser.add_subparsers(dest="command", required=True)
 
+    init = sub.add_parser("init", help="Create or adopt a bibliography library")
+    init.add_argument(
+        "path", nargs="?", type=Path, default=LIBRARY_ROOT,
+        help="Library directory (defaults to BIBLIOGRAPHY_LIBRARY or the repository)",
+    )
+    init.add_argument("--name", help="Human-readable library name")
+    sub.add_parser("library-info", help="Describe the selected library")
+    sub.add_parser("library-path", help="Print the selected library path")
+    select_library = sub.add_parser(
+        "select-library", help="Persist the library selection on this computer"
+    )
+    select_library.add_argument("path", type=Path)
+    sub.add_parser(
+        "clear-library-selection", help="Return to the repository-root default"
+    )
+
     scan = sub.add_parser("scan", help="Reconcile PDFs with existing metadata")
     scan.add_argument("--dry-run", action="store_true", help="Preview without renaming")
 
@@ -1619,6 +1652,47 @@ def main():
     export.add_argument("--unread-only", action="store_true", help="Only include unread entries")
 
     args = parser.parse_args()
+
+    if args.command == "init":
+        library_path = args.path.expanduser().resolve()
+        try:
+            result = initialize_library(
+                library_path,
+                args.name or library_path.name or "Bibliography",
+                FIELDS,
+                ABSTRACT_FIELDS,
+            )
+        except (OSError, ValueError) as exc:
+            parser.error(str(exc))
+        print(f"Library ready: {result['root']}")
+        if result["created"]:
+            print("Created: " + ", ".join(result["created"]))
+        else:
+            print("No changes needed")
+        return
+    if args.command == "library-info":
+        result = describe_library(LIBRARY_ROOT)
+        result["selection_source"] = LIBRARY_SELECTION["source"]
+        result["selection_error"] = LIBRARY_SELECTION["error"]
+        print(json.dumps(result, indent=2, ensure_ascii=False))
+        if not result["valid"]:
+            raise SystemExit(1)
+        return
+    if args.command == "library-path":
+        print(LIBRARY_ROOT)
+        return
+    if args.command == "select-library":
+        try:
+            config_path = save_library_selection(args.path)
+        except (OSError, ValueError) as exc:
+            parser.error(str(exc))
+        print(f"Selected library: {args.path.expanduser().resolve()}")
+        print(f"Saved selection: {config_path}")
+        return
+    if args.command == "clear-library-selection":
+        changed = clear_library_selection()
+        print("Library selection cleared" if changed else "No saved selection")
+        return
 
     if args.command == "scan":
         scan_pdfs(dry_run=args.dry_run)

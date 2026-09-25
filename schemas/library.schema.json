@@ -1,0 +1,41 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/csoneira/BIBLIOGRAPHY/schemas/library.schema.json",
+  "title": "BIBLIOGRAPHY library manifest",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["format_version", "name", "pdf_archive"],
+  "properties": {
+    "format_version": {
+      "const": 1
+    },
+    "name": {
+      "type": "string",
+      "minLength": 1
+    },
+    "pdf_archive": {
+      "oneOf": [
+        {
+          "type": "null"
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["backend"],
+          "properties": {
+            "backend": {
+              "type": "string",
+              "minLength": 1
+            },
+            "remote": {
+              "type": "string"
+            },
+            "path": {
+              "type": "string"
+            }
+          }
+        }
+      ]
+    }
+  }
+}

@@ -8,6 +8,7 @@ import re
 import shutil
 import socket
 import subprocess
+import sys
 import tempfile
 import threading
 import unicodedata
@@ -19,14 +20,22 @@ from urllib.error import HTTPError, URLError
 from urllib.parse import parse_qs, quote, urlencode, urlparse
 from urllib.request import Request, urlopen
 
-ROOT = Path(__file__).resolve().parent.parent
-SAVED_LISTS_DIR = ROOT / "SAVED_LISTS"
-ABSTRACTS_FILE = ROOT / "METADATA" / "abstracts.csv"
-METADATA_FILE = ROOT / "METADATA" / "metadata.csv"
-CHANGE_BACKUP_DIR = ROOT / "METADATA" / "backups" / "viewer_changes"
-CHECKPOINT_BACKUP_DIR = ROOT / "METADATA" / "backups" / "checkpoints"
+APPLICATION_ROOT = Path(__file__).resolve().parent.parent
+CODE_ROOT = Path(__file__).resolve().parent
+if str(CODE_ROOT) not in sys.path:
+    sys.path.insert(0, str(CODE_ROOT))
+from library_state import describe_library, resolve_library_selection
+
+LIBRARY_SELECTION = resolve_library_selection(APPLICATION_ROOT)
+LIBRARY_ROOT = LIBRARY_SELECTION["root"]
+ROOT = LIBRARY_ROOT  # Backward-compatible alias used by existing integrations.
+SAVED_LISTS_DIR = LIBRARY_ROOT / "SAVED_LISTS"
+ABSTRACTS_FILE = LIBRARY_ROOT / "METADATA" / "abstracts.csv"
+METADATA_FILE = LIBRARY_ROOT / "METADATA" / "metadata.csv"
+CHANGE_BACKUP_DIR = LIBRARY_ROOT / "METADATA" / "backups" / "viewer_changes"
+CHECKPOINT_BACKUP_DIR = LIBRARY_ROOT / "METADATA" / "backups" / "checkpoints"
 CHANGE_HISTORY_LIMIT = 10
-CUSTOM_WALLPAPER_DIR = ROOT / "VIEWER" / "wallpapers" / "custom"
+CUSTOM_WALLPAPER_DIR = APPLICATION_ROOT / "VIEWER" / "wallpapers" / "custom"
 _ABSTRACT_CACHE = {"mtime_ns": None, "data": {}}
 _ANNOTATION_SCAN_CACHE = {}
 _WRITE_LOCK = threading.Lock()
@@ -1255,6 +1264,7 @@ def library_git_status() -> dict:
     if match:
         behind, ahead = map(int, match.groups())
     return {
+        "library": describe_library(ROOT),
         "clean": not changes,
         "changes": changes,
         "ahead": ahead,
@@ -1271,8 +1281,8 @@ def library_git_status() -> dict:
 def validate_library() -> dict:
     checks = []
     for label, command in (
-        ("Integrity", ["python3", "CODE/bib.py", "verify"]),
-        ("Metadata", ["python3", "CODE/bib.py", "validate"]),
+        ("Integrity", ["python3", str(APPLICATION_ROOT / "CODE" / "bib.py"), "verify"]),
+        ("Metadata", ["python3", str(APPLICATION_ROOT / "CODE" / "bib.py"), "validate"]),
     ):
         result = subprocess.run(
             command, cwd=ROOT, capture_output=True, text=True, timeout=60, check=False,
@@ -1338,7 +1348,20 @@ def load_abstracts_map() -> dict:
 class Handler(SimpleHTTPRequestHandler):
     def __init__(self, *args, **kwargs):
         # Let the standard handler normalize request paths and reject traversal.
-        super().__init__(*args, directory=str(ROOT), **kwargs)
+        super().__init__(*args, directory=str(APPLICATION_ROOT), **kwargs)
+
+    def translate_path(self, path):
+        """Serve library data under the legacy URLs while UI assets stay in the app."""
+        app_path = Path(super().translate_path(path))
+        try:
+            relative = app_path.relative_to(APPLICATION_ROOT)
+        except ValueError:
+            return str(app_path)
+        if relative.parts and relative.parts[0] in {
+            "CONFIGS", "METADATA", "PDFs", "SAVED_LISTS",
+        }:
+            return str(ROOT / relative)
+        return str(app_path)
 
     def _disable_cache_for_request(self) -> bool:
         parsed = urlparse(self.path)
@@ -1356,6 +1379,7 @@ class Handler(SimpleHTTPRequestHandler):
                 "/pdf-audit",
                 "/change-history",
                 "/library-status",
+                "/library-info",
                 "/validate-library",
                 "/checkpoint-library",
                 "/wallpapers",
@@ -1424,6 +1448,9 @@ class Handler(SimpleHTTPRequestHandler):
             except (OSError, subprocess.SubprocessError) as exc:
                 self.send_error(500, str(exc))
             return
+        if parsed.path == "/library-info":
+            self._send_json(describe_library(ROOT))
+            return
         if parsed.path == "/wallpapers":
             self._send_json({"custom": list_custom_wallpapers()})
             return
@@ -1432,6 +1459,11 @@ class Handler(SimpleHTTPRequestHandler):
     def do_POST(self):
         parsed = urlparse(self.path)
         path = parsed.path
+
+        library = describe_library(ROOT)
+        if not library["valid"]:
+            self.send_error(409, library["error"] or "Library is not initialized")
+            return
 
         if path not in {"/save-list", "/save-filter"}:
             if path == "/create-entry":
@@ -2145,7 +2177,7 @@ class Handler(SimpleHTTPRequestHandler):
 
 
 if __name__ == "__main__":
-    os.chdir(ROOT)
+    os.chdir(APPLICATION_ROOT)
     migrate_metadata_schema()
     # This server exposes endpoints that modify local metadata and open PDFs.
     # Keep it available only to this computer; it is not an authenticated web app.

@@ -2,6 +2,69 @@
 
 Local, git-friendly bibliography management with one canonical identifier per paper.
 
+## Application and Library Roots
+
+The software checkout and the live bibliography can be separate directories.
+By default, the repository root remains the library root, preserving the behavior
+of existing installations. Create a new, empty external library with:
+
+```bash
+python3 CODE/bib.py init "$HOME/BIBLIOGRAPHY_LIBRARY" \
+  --name "My Bibliography"
+```
+
+Then select it with `BIBLIOGRAPHY_LIBRARY`:
+
+```bash
+export BIBLIOGRAPHY_LIBRARY="$HOME/BIBLIOGRAPHY_LIBRARY"
+python3 CODE/viewer_server.py
+```
+
+For a persistent, machine-local selection—used automatically by the CLI,
+viewer, desktop launcher, title audit, and backup script—run:
+
+```bash
+python3 CODE/bib.py select-library "$HOME/BIBLIOGRAPHY_LIBRARY"
+```
+
+This writes only the absolute library path to
+`~/.config/bibliography/config.json`; it is not committed to either repository.
+`BIBLIOGRAPHY_LIBRARY` still takes precedence when set. To return to the
+repository-root compatibility default, run `bib.py clear-library-selection`.
+
+The external directory currently uses the same data layout:
+
+```text
+BIBLIOGRAPHY_LIBRARY/
+├── library.json
+├── METADATA/
+├── SAVED_LISTS/
+├── CONFIGS/
+├── .gitignore
+└── PDFs/
+```
+
+The generated CSV files contain their headers and zero bibliography rows, so a
+new user starts with `Papers: 0`. `library.json` contains the library format,
+display name, and optional PDF-archive description; it never contains credentials
+or machine-specific paths. Its format is documented by
+`schemas/library.schema.json`.
+
+Inspect the selected library without changing it:
+
+```bash
+python3 CODE/bib.py library-info
+```
+
+Existing repository-based installations without `library.json` are recognized as
+legacy libraries. Running `bib.py init` against one adopts it without overwriting
+its metadata, abstracts, configuration, or saved lists.
+
+`CODE/`, `VIEWER/`, tests, and scripts continue to come from the application
+checkout. The CLI, viewer server, title-audit tool, launcher, validation actions,
+and metadata backup script all honor the selected library. This is the
+backward-compatible first migration stage; existing data does not need to move.
+
 ## Canonical Model
 
 - `METADATA/metadata.csv` is the primary table.

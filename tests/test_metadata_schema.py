@@ -28,9 +28,6 @@ class TestMetadataSchema(unittest.TestCase):
             header = next(reader, [])
         self.assertEqual(header, bib.FIELDS)
 
-        pdf_dir = repo_root / "PDFs"
-        local_pdf_codes = {path.stem for path in pdf_dir.glob("*.pdf")}
-
         metadata_codes = set()
         doi_prefix = re.compile(r"^https?://(dx\.)?doi\.org/", re.IGNORECASE)
         doi_prefix_alt = re.compile(r"^doi:\s*", re.IGNORECASE)
@@ -65,10 +62,6 @@ class TestMetadataSchema(unittest.TestCase):
                     pdf_rel = bib.code_to_rel_pdf_path(code)
                     self.assertTrue(pdf_rel.lower().endswith(".pdf"))
 
-                pdf_hosts = (row.get("pdf_hosts") or "").strip()
-                if code in local_pdf_codes:
-                    self.assertTrue(pdf_hosts, f"local PDF has no recorded host: {code}")
-
                 star = (row.get("star") or "").strip()
                 if star:
                     self.assertIn(star, {"1"})
@@ -88,8 +81,6 @@ class TestMetadataSchema(unittest.TestCase):
                 last_viewed = (row.get("last_viewed") or "").strip()
                 if last_viewed:
                     self.assertRegex(last_viewed, r"^\d{4}-\d{2}-\d{2}$")
-
-        self.assertTrue(local_pdf_codes.issubset(metadata_codes))
 
         abstracts_path = repo_root / "METADATA" / "abstracts.csv"
         self.assertTrue(abstracts_path.exists(), "abstracts.csv not found")

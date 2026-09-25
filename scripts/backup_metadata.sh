@@ -2,7 +2,8 @@
 set -euo pipefail
 
 repo_root=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
-metadata_dir="$repo_root/METADATA"
+library_root=$(python3 "$repo_root/CODE/bib.py" library-path)
+metadata_dir="$library_root/METADATA"
 backup_dir="$metadata_dir/backups"
 
 mkdir -p "$backup_dir"

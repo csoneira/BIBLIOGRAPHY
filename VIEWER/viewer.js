@@ -996,6 +996,17 @@ function freshUrl(url) {
 }
 
 async function loadData() {
+  const libraryResponse = await fetch(freshUrl("/library-info"), {
+    cache: "no-store",
+  });
+  if (libraryResponse.ok) {
+    const library = await libraryResponse.json();
+    if (!library.valid) {
+      throw new Error(
+        `${library.error || "Library is not initialized"}. Run: python3 CODE/bib.py init "${library.root}"`,
+      );
+    }
+  }
   const metadataResponse = await fetch(freshUrl("../METADATA/metadata.csv"), {
     cache: "no-store",
   });

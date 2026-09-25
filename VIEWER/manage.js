@@ -511,10 +511,17 @@ function editEntry(row) {
 }
 
 async function loadRows() {
-  const [metadataResponse, abstractsResponse] = await Promise.all([
+  const [libraryResponse, metadataResponse, abstractsResponse] = await Promise.all([
+    fetch(freshUrl("/library-info"), { cache: "no-store" }),
     fetch(freshUrl("../METADATA/metadata.csv"), { cache: "no-store" }),
     fetch(freshUrl("/abstracts"), { cache: "no-store" }),
   ]);
+  if (libraryResponse.ok) {
+    const library = await libraryResponse.json();
+    if (!library.valid) {
+      throw new Error(`${library.error}. Initialize it with bib.py init.`);
+    }
+  }
   if (!metadataResponse.ok) throw new Error("metadata.csv could not be loaded");
   const rows = csvRows(await metadataResponse.text());
   const abstracts = abstractsResponse.ok ? (await abstractsResponse.json()).abstracts || {} : {};

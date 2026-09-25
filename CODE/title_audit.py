@@ -7,6 +7,7 @@ import html
 import json
 import os
 import re
+import sys
 import tempfile
 import time
 from datetime import datetime, timezone
@@ -16,9 +17,16 @@ from urllib.error import HTTPError, URLError
 from urllib.parse import quote, urlencode
 from urllib.request import Request, urlopen
 
-ROOT = Path(__file__).resolve().parent.parent
-METADATA_FILE = ROOT / "METADATA" / "metadata.csv"
-CACHE_FILE = ROOT / "METADATA" / "title_audit_cache.json"
+APPLICATION_ROOT = Path(__file__).resolve().parent.parent
+CODE_ROOT = Path(__file__).resolve().parent
+if str(CODE_ROOT) not in sys.path:
+    sys.path.insert(0, str(CODE_ROOT))
+from library_state import resolve_library_selection
+
+LIBRARY_ROOT = resolve_library_selection(APPLICATION_ROOT)["root"]
+ROOT = LIBRARY_ROOT  # Backward-compatible alias.
+METADATA_FILE = LIBRARY_ROOT / "METADATA" / "metadata.csv"
+CACHE_FILE = LIBRARY_ROOT / "METADATA" / "title_audit_cache.json"
 USER_AGENT = "BIBLIOGRAPHY-title-audit/1.0 (mailto:csoneira@ucm.es)"
 
 # Corrections established from document title pages, repository history, or an
