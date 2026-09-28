@@ -78,6 +78,30 @@ it into `PDFs/`, verifies `pdf_sha256` when available, atomically promotes it in
 the local cache, and then opens it normally. A failed or mismatched download never
 replaces the local file.
 
+Metadata disaster-recovery snapshots use a separate optional manifest entry:
+
+```json
+{
+  "metadata_backup": {
+    "backend": "rclone",
+    "remote": "gdrive",
+    "path": "BIBLIOGRAPHY_BACKUPS"
+  }
+}
+```
+
+Preview or upload a timestamped snapshot with:
+
+```bash
+python3 CODE/bib.py backup-library --dry-run
+python3 CODE/bib.py backup-library
+```
+
+Each backup contains the manifest, catalogue, abstracts, collections/title review
+when present, saved lists, and library JSON configuration. PDFs, credentials,
+caches, and prior backups are excluded. A SHA-256 sidecar is uploaded and both
+objects are verified before the command succeeds.
+
 `CODE/`, `VIEWER/`, tests, and scripts continue to come from the application
 checkout. The CLI, viewer server, title-audit tool, launcher, validation actions,
 and metadata backup script all honor the selected library. This is the

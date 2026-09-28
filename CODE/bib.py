@@ -10,6 +10,7 @@ import shutil
 import socket
 import subprocess
 import sys
+import tarfile
 import tempfile
 from datetime import date, datetime, timezone
 from pathlib import Path
@@ -102,6 +103,94 @@ ABSTRACT_NOISE_RE = re.compile(
 
 REQUIRED_FIELDS = ["code", "type", "title"]
 ABSTRACT_FIELDS = ["code", "abstract"]
+
+
+def library_snapshot_files(root: Path) -> list[Path]:
+    candidates = [
+        root / "library.json",
+        root / "METADATA" / "metadata.csv",
+        root / "METADATA" / "abstracts.csv",
+        root / "METADATA" / "collections.json",
+        root / "METADATA" / "title_review.csv",
+    ]
+    for directory in (root / "SAVED_LISTS", root / "CONFIGS"):
+        if directory.is_dir():
+            candidates.extend(sorted(directory.glob("*.json")))
+    return [path for path in candidates if path.is_file() and not path.is_symlink()]
+
+
+def create_library_snapshot(root: Path, destination: Path) -> list[str]:
+    root = root.resolve()
+    files = library_snapshot_files(root)
+    required = {"library.json", "METADATA/metadata.csv", "METADATA/abstracts.csv"}
+    relative_names = [str(path.relative_to(root)) for path in files]
+    missing = sorted(required - set(relative_names))
+    if missing:
+        raise ValueError("Cannot snapshot library; missing: " + ", ".join(missing))
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    with tarfile.open(destination, "w:gz") as archive:
+        for path, relative in zip(files, relative_names):
+            archive.add(path, arcname=relative, recursive=False)
+    return relative_names
+
+
+def metadata_backup_base(root: Path) -> str | None:
+    manifest = describe_library(root).get("manifest") or {}
+    backup = manifest.get("metadata_backup")
+    if not isinstance(backup, dict) or backup.get("backend") != "rclone":
+        return None
+    remote = (backup.get("remote") or "").strip().rstrip(":")
+    path = (backup.get("path") or "").strip().strip("/")
+    if not remote or not path:
+        return None
+    return f"{remote}:{path}"
+
+
+def backup_library(dry_run: bool = False) -> dict:
+    remote = metadata_backup_base(LIBRARY_ROOT)
+    if not remote:
+        raise ValueError("No rclone metadata_backup is configured in library.json")
+    if not shutil.which("rclone"):
+        raise RuntimeError("rclone is not installed")
+    stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%fZ")
+    filename = f"library-{stamp}.tar.gz"
+    with tempfile.TemporaryDirectory(prefix="bibliography-backup-") as tmp_dir:
+        temp_root = Path(tmp_dir)
+        archive_path = temp_root / filename
+        files = create_library_snapshot(LIBRARY_ROOT, archive_path)
+        digest = sha256_file(archive_path)
+        checksum_path = temp_root / f"{filename}.sha256"
+        checksum_path.write_text(f"{digest}  {filename}\n", encoding="utf-8")
+        result = {
+            "archive": filename,
+            "remote": remote,
+            "sha256": digest,
+            "bytes": archive_path.stat().st_size,
+            "files": files,
+            "uploaded": False,
+        }
+        if dry_run:
+            return result
+        for source in (archive_path, checksum_path):
+            completed = subprocess.run(
+                ["rclone", "copyto", str(source), f"{remote}/{source.name}"],
+                capture_output=True, text=True, timeout=900, check=False,
+            )
+            if completed.returncode:
+                message = completed.stderr.strip().splitlines()
+                raise RuntimeError(message[-1] if message else "Backup upload failed")
+        checked = subprocess.run(
+            [
+                "rclone", "check", str(temp_root), remote, "--one-way",
+                "--include", filename, "--include", checksum_path.name,
+            ],
+            capture_output=True, text=True, timeout=120, check=False,
+        )
+        if checked.returncode:
+            message = checked.stderr.strip().splitlines()
+            raise RuntimeError(message[-1] if message else "Backup verification failed")
+        result["uploaded"] = True
+        return result
 
 
 def code_to_rel_pdf_path(code: str) -> str:
@@ -1549,6 +1638,10 @@ def main():
     sub.add_parser(
         "clear-library-selection", help="Return to the repository-root default"
     )
+    backup = sub.add_parser(
+        "backup-library", help="Create and upload a metadata-only library snapshot"
+    )
+    backup.add_argument("--dry-run", action="store_true")
 
     scan = sub.add_parser("scan", help="Reconcile PDFs with existing metadata")
     scan.add_argument("--dry-run", action="store_true", help="Preview without renaming")
@@ -1692,6 +1785,13 @@ def main():
     if args.command == "clear-library-selection":
         changed = clear_library_selection()
         print("Library selection cleared" if changed else "No saved selection")
+        return
+    if args.command == "backup-library":
+        try:
+            result = backup_library(dry_run=args.dry_run)
+        except (OSError, RuntimeError, ValueError) as exc:
+            parser.error(str(exc))
+        print(json.dumps(result, indent=2, ensure_ascii=False))
         return
 
     if args.command == "scan":

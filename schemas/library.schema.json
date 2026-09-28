@@ -14,6 +14,14 @@
       "minLength": 1
     },
     "pdf_archive": {
+      "$ref": "#/$defs/storageBackend"
+    },
+    "metadata_backup": {
+      "$ref": "#/$defs/storageBackend"
+    }
+  },
+  "$defs": {
+    "storageBackend": {
       "oneOf": [
         {
           "type": "null"

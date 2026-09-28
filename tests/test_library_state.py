@@ -45,7 +45,12 @@ class TestLibraryState(unittest.TestCase):
             manifest = json.loads((root / "library.json").read_text(encoding="utf-8"))
             self.assertEqual(
                 manifest,
-                {"format_version": 1, "name": "My Papers", "pdf_archive": None},
+                {
+                    "format_version": 1,
+                    "name": "My Papers",
+                    "pdf_archive": None,
+                    "metadata_backup": None,
+                },
             )
             with (root / "METADATA" / "metadata.csv").open(newline="") as handle:
                 self.assertEqual(next(csv.reader(handle)), load_bib_fields())

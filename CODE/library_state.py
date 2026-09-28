@@ -80,7 +80,9 @@ def read_library_manifest(root: Path) -> dict:
         manifest = json.load(handle)
     if not isinstance(manifest, dict):
         raise ValueError("library.json must contain a JSON object")
-    unknown = set(manifest) - {"format_version", "name", "pdf_archive"}
+    unknown = set(manifest) - {
+        "format_version", "name", "pdf_archive", "metadata_backup",
+    }
     if unknown:
         raise ValueError("Unknown library.json fields: " + ", ".join(sorted(unknown)))
     if manifest.get("format_version") != FORMAT_VERSION:
@@ -90,21 +92,27 @@ def read_library_manifest(root: Path) -> dict:
     if not isinstance(manifest.get("name"), str) or not manifest["name"].strip():
         raise ValueError("library.json must contain a non-empty name")
     archive = manifest.get("pdf_archive")
-    if archive is not None:
+    for section_name, archive in (
+        ("pdf_archive", archive),
+        ("metadata_backup", manifest.get("metadata_backup")),
+    ):
+        if archive is None:
+            continue
         if not isinstance(archive, dict):
-            raise ValueError("pdf_archive must be null or a JSON object")
+            raise ValueError(f"{section_name} must be null or a JSON object")
         unknown_archive = set(archive) - {"backend", "remote", "path"}
         if unknown_archive:
             raise ValueError(
-                "Unknown pdf_archive fields: " + ", ".join(sorted(unknown_archive))
+                f"Unknown {section_name} fields: "
+                + ", ".join(sorted(unknown_archive))
             )
         backend = archive.get("backend")
         if not isinstance(backend, str) or not backend.strip():
-            raise ValueError("pdf_archive.backend must be a non-empty string")
+            raise ValueError(f"{section_name}.backend must be a non-empty string")
         for field in ("remote", "path"):
             value = archive.get(field)
             if value is not None and not isinstance(value, str):
-                raise ValueError(f"pdf_archive.{field} must be a string")
+                raise ValueError(f"{section_name}.{field} must be a string")
     return manifest
 
 
@@ -187,6 +195,7 @@ def initialize_library(
             "format_version": FORMAT_VERSION,
             "name": name,
             "pdf_archive": None,
+            "metadata_backup": None,
         }
         _write_json_exclusive(manifest_path, manifest)
         manifest_created = True
