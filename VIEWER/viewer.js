@@ -198,6 +198,21 @@ function sortByAddedDate(rows, direction) {
   return withDate.concat(withoutDate);
 }
 
+function sortByViewedDate(rows) {
+  const viewed = [];
+  const neverViewed = [];
+  rows.forEach((row) => {
+    if (isIsoDate(row.last_viewed || "")) {
+      viewed.push(row);
+    } else {
+      neverViewed.push(row);
+    }
+  });
+
+  viewed.sort((a, b) => (b.last_viewed || "").localeCompare(a.last_viewed || ""));
+  return viewed.concat(neverViewed);
+}
+
 function publicationSortKey(row) {
   const publicationDate = (row.publication_date || "").trim();
   if (/^\d{4}-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/.test(publicationDate)) {
@@ -255,6 +270,9 @@ function sortRows(rows, sortMode) {
   }
   if (sortMode === "added_desc") {
     return sortByAddedDate(rows, "desc");
+  }
+  if (sortMode === "viewed_desc") {
+    return sortByViewedDate(rows);
   }
   if (sortMode === "publication_asc") {
     return sortByPublicationDate(rows, "asc");
