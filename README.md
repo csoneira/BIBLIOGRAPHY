@@ -2,6 +2,8 @@
 
 Local, git-friendly bibliography management with one canonical identifier per paper.
 
+Icon drawn by me.
+
 ## Application and Library Roots
 
 The software checkout and the live bibliography can be separate directories.

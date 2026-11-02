@@ -3,12 +3,12 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 ROOT="$(cd -- "$SCRIPT_DIR/.." && pwd)"
-LIBRARY_ROOT="$(python3 CODE/bib.py library-path)"
 URL="http://localhost:8000/VIEWER/viewer.html?open_ts=$(date +%s)"
 PID_FILE="${XDG_RUNTIME_DIR:-/tmp}/bibliography-viewer-${UID}.pid"
 LIBRARY_FILE="${PID_FILE}.library"
 
 cd "$ROOT"
+LIBRARY_ROOT="$(python3 CODE/bib.py library-path)"
 
 server_is_running() {
   [[ -f "$PID_FILE" ]] || return 1
@@ -23,7 +23,8 @@ server_is_running() {
 }
 
 start_server() {
-  python3 CODE/viewer_server.py >/dev/null 2>&1 &
+  setsid python3 CODE/viewer_server.py \
+    >"${TMPDIR:-/tmp}/bibliography-viewer.log" 2>&1 &
   echo $! >"$PID_FILE"
   echo "$LIBRARY_ROOT" >"$LIBRARY_FILE"
   sleep 0.5
