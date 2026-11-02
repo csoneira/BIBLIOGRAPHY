@@ -532,6 +532,10 @@ function renderResults(rows) {
     notesSave.className = "notes-save";
     notesSave.textContent = "Save notes";
 
+    const notesClean = document.createElement("button");
+    notesClean.className = "notes-save";
+    notesClean.textContent = "Clean notes";
+
     const notesStatus = document.createElement("span");
     notesStatus.className = "notes-status";
 
@@ -572,7 +576,24 @@ function renderResults(rows) {
       }
     });
 
+    notesClean.addEventListener("click", () => {
+      const cleaner = window.BibliographyNotes?.cleanPastedNotes;
+      if (!cleaner) {
+        notesStatus.textContent = "Text cleaner unavailable";
+        return;
+      }
+      const cleaned = cleaner(notesInput.value);
+      if (cleaned === notesInput.value) {
+        notesStatus.textContent = "Notes already clean";
+        return;
+      }
+      notesInput.value = cleaned;
+      notesStatus.textContent = "Cleaned · review, then save";
+      notesInput.focus();
+    });
+
     notesControls.appendChild(notesSave);
+    notesControls.appendChild(notesClean);
     notesControls.appendChild(notesStatus);
     notesSection.appendChild(notesLabel);
     notesSection.appendChild(notesInput);

@@ -247,7 +247,9 @@ function resetAllTextCleanupStates() {
 function setupTextCleanup(field) {
   const input = document.getElementById(`entry${field}`);
   document.getElementById(`clean${field}Btn`).addEventListener("click", () => {
-    const cleaner = window.BibliographyNotes?.cleanPastedNotes;
+    const cleaner = field === "Abstract"
+      ? window.BibliographyNotes?.cleanPastedAbstract
+      : window.BibliographyNotes?.cleanPastedNotes;
     if (!cleaner) {
       resetTextCleanupState(field, "Text cleaner unavailable");
       return;

@@ -28,11 +28,12 @@
     };
 
     lines.forEach((rawLine) => {
+      const indent = (rawLine.match(/^[\t ]*/) || [""])[0].replace(/\t/g, "    ");
       const line = rawLine.replace(/\s+/g, " ").trim();
       if (!line) return;
       if (ITEM_START.test(line)) {
         flush();
-        current = line;
+        current = `${indent}${line}`;
       } else if (!current) {
         current = line;
       } else {
@@ -43,5 +44,24 @@
     return items.join("\n");
   }
 
-  return { cleanPastedNotes };
+  function cleanPastedAbstract(value) {
+    const cleaned = cleanPastedNotes(value);
+    const items = cleaned.split("\n").filter(Boolean);
+    const quotedItems = items.map((item) => {
+      const content = item.replace(ITEM_START, "").trim();
+      const straight = content.match(/^"([\s\S]+)"$/);
+      const curly = content.match(/^“([\s\S]+)”$/);
+      return straight?.[1] || curly?.[1] || "";
+    }).filter(Boolean);
+
+    // Some copied summaries wrap the real abstract in quotes and surround it
+    // with bibliography notes or empty headings. Only extract when there is
+    // exactly one unambiguous quoted item, so genuine abstract lists survive.
+    if (items.length > 1 && quotedItems.length === 1) {
+      return quotedItems[0].trim();
+    }
+    return cleaned;
+  }
+
+  return { cleanPastedNotes, cleanPastedAbstract };
 }));

@@ -12,9 +12,9 @@ class TestNotesCleanup(unittest.TestCase):
             raise unittest.SkipTest("Node.js is not installed")
         cls.module_path = Path(__file__).resolve().parents[1] / "VIEWER" / "notes-cleanup.js"
 
-    def clean(self, value):
+    def clean(self, value, function="cleanPastedNotes"):
         script = (
-            f"const clean=require({json.dumps(str(self.module_path))}).cleanPastedNotes;"
+            f"const clean=require({json.dumps(str(self.module_path))})[{json.dumps(function)}];"
             f"process.stdout.write(clean({json.dumps(value)}));"
         )
         result = subprocess.run(
@@ -45,6 +45,28 @@ class TestNotesCleanup(unittest.TestCase):
         self.assertEqual(
             self.clean("Introductory\ntext.\n\n\n• First point\ncontinued"),
             "Introductory text.\n• First point continued",
+        )
+
+    def test_preserves_nested_list_indentation(self):
+        self.assertEqual(
+            self.clean("- Characteristics:\n    - five gaps\n        - 260 um gap"),
+            "- Characteristics:\n    - five gaps\n        - 260 um gap",
+        )
+
+    def test_abstract_extracts_single_quoted_item_from_summary_wrapper(self):
+        source = (
+            '- It has a complementary paper in this Bibliography: '
+            '"Development of MRPCs for J-PARC and Muography".\n'
+            '- "Recent efforts in MRPC development have focused on three directions:\n'
+            'high-rate capabilities, ultra-high time resolutions beyond 20 ps, and\n'
+            'balancing both time and position resolutions."\n'
+            '- Characteristics:'
+        )
+        self.assertEqual(
+            self.clean(source, "cleanPastedAbstract"),
+            "Recent efforts in MRPC development have focused on three directions: "
+            "high-rate capabilities, ultra-high time resolutions beyond 20 ps, and "
+            "balancing both time and position resolutions.",
         )
 
 
